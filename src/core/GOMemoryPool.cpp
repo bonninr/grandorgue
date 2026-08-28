@@ -63,9 +63,16 @@ bool inline GOMemoryPool::InMemoryPool(void *ptr) {
 void *GOMemoryPool::Alloc(size_t length, bool final) {
   if (m_MemoryLimit && m_CacheSize + m_PoolSize + m_MallocSize > m_MemoryLimit)
     return NULL;
-  if (!final || m_TransientMode)
-    /* In transient mode 'final' is ignored: the caller intends to free this
-     * block again shortly, and only malloc'd blocks can actually be freed. */
+  if (m_TransientMode)
+    /* 'final' is ignored here: the caller intends to free this block again
+     * shortly, and only malloc'd blocks can actually be freed.
+     *
+     * Zeroed, not malloc'd: the sections written to the cache contain a little
+     * alignment slack that nothing ever assigns, and pool memory is freshly
+     * mapped so that slack reads as zero. Plain malloc would put recycled
+     * sample data there instead and write it into the cache. */
+    return calloc(1, length);
+  if (!final)
     return malloc(length);
   GOMutexLocker locker(m_mutex);
   void *data = PoolAlloc(length);
