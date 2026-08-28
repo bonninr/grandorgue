@@ -125,8 +125,7 @@ public:
               << " head_kb=" << head_kb << " bounded_build=" << boundedBuild
               << "\nwork_dir=" << workDir << "\n";
 
-    std::string confPath
-      = std::string(confDir.mb_str()) + "/GrandOrgue.conf";
+    std::string confPath = std::string(confDir.mb_str()) + "/GrandOrgue.conf";
     GOConfig settings("loadprobe", confPath);
     settings.Load();
     settings.ManageCache(true);

@@ -35,3 +35,7 @@ CLAUDE.md
 .project
 .settings/deb/
 deb/
+
+# Artifacts left by build-scripts/for-win64 when run in-tree
+build-scripts/for-win64/build/
+build-scripts/for-win64/*.deb
