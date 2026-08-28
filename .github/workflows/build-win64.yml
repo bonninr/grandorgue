@@ -1,0 +1,65 @@
+name: Build Windows
+
+on:
+  push:
+    branches: [feature/sample-streaming]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  calc_ver:
+    runs-on: ubuntu-latest
+    outputs:
+      project_ver: ${{steps.vers.outputs.project_ver}}
+      build_ver: ${{steps.vers.outputs.build_ver}}
+      full_ver: ${{steps.vers.outputs.full_ver}}
+      release_flag: ${{steps.vers.outputs.release_flag}}
+      asan_flag: ${{steps.vers.outputs.asan_flag}}
+    steps:
+    - uses: actions/checkout@v4.1.1
+    - name: Calculate versions
+      id: vers
+      shell: bash
+      run: |
+        git fetch --prune --unshallow --tags || true
+        GIT_VERSION=`git describe --tags 2>/dev/null || echo "3.18.0-0.streaming"`
+        PROJECT_VERSION=`echo $GIT_VERSION | cut -d- -f1`
+        BUILD_VERSION=`echo $GIT_VERSION | cut -d- -f2-3 --output-delimiter=.`
+        echo "project_ver=$PROJECT_VERSION" >>$GITHUB_OUTPUT
+        echo "build_ver=$BUILD_VERSION" >>$GITHUB_OUTPUT
+        echo "full_ver=$PROJECT_VERSION-$BUILD_VERSION" >>$GITHUB_OUTPUT
+        echo "release_flag=OFF" >>$GITHUB_OUTPUT
+        echo "asan_flag=" >>$GITHUB_OUTPUT
+    - name: Display
+      run: |
+        echo "full_ver=${{steps.vers.outputs.full_ver}}"
+
+  build-win64:
+    needs: [calc_ver]
+    runs-on: ubuntu-latest
+    steps:
+    - uses: actions/checkout@v4.1.1
+      with:
+        submodules: true
+    - name: Install Dependencies
+      run: ${{github.workspace}}/build-scripts/for-win64/prepare-debian-based.sh
+    - name: Build
+      working-directory: ${{github.workspace}}
+      run: >
+        ${{github.workspace}}/build-scripts/for-win64/build-on-linux.sh
+        ${{needs.calc_ver.outputs.project_ver}}
+        ${{needs.calc_ver.outputs.build_ver}}
+        ${{github.workspace}}
+        ""
+        OFF
+        ""
+        ""
+    - name: Upload result
+      uses: actions/upload-artifact@v4
+      with:
+        name: grandorgue-win64
+        path: |
+          ${{github.workspace}}/build/win64/grandorgue*
+        if-no-files-found: error
