@@ -198,6 +198,21 @@ public:
   }
   bool IsCacheable() const { return m_Cacheable; }
   bool UpdateCache(bool compress, GOProgressMonitor &monitor);
+
+  /**
+   * Write the sample cache without ever holding the whole organ in memory.
+   *
+   * UpdateCache() can only run after LoadObjects() has loaded every object,
+   * so building a cache costs as much RAM as the organ is big - which is the
+   * thing that stops a large sample set from being usable on a small machine
+   * at all. This instead loads one cache object, writes it, and discards it
+   * again, so peak usage is bounded by a single object rather than the total.
+   *
+   * On success the caller can then take the ordinary cache path, which maps
+   * the file instead of allocating. On failure the partial cache is removed
+   * and the caller falls back to the normal in-memory load.
+   */
+  bool BuildCacheBounded(bool compress, GOProgressMonitor &monitor);
   void DeleteCache();
   void DeleteSettings();
   void PrepareRecording();

@@ -310,6 +310,7 @@ GOConfig::GOConfig(
     CompressCache(this, GENERAL, wxT("CompressCache"), false),
     StreamFromCache(this, GENERAL, wxT("StreamFromCache"), false),
     StreamHeadKB(this, GENERAL, wxT("StreamHeadKB"), 0, 65536, 256),
+    BoundedCacheBuild(this, GENERAL, wxT("BoundedCacheBuild"), false),
     LoadLastFile(
       this,
       GENERAL,

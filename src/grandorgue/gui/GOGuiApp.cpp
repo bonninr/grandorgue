@@ -94,6 +94,28 @@ static const wxCmdLineEntryDesc cmd_line_desc[] = {
    wxTRANSLATE("generate verbose log messages"),
    wxCMD_LINE_VAL_NONE,
    0x0},
+  {wxCMD_LINE_SWITCH,
+   NULL,
+   "stream",
+   wxTRANSLATE("page sample data from the cache on demand instead of loading "
+               "it all into RAM (needs a fast SSD); --no-stream forces off"),
+   wxCMD_LINE_VAL_NONE,
+   wxCMD_LINE_SWITCH_NEGATABLE},
+  {wxCMD_LINE_OPTION,
+   NULL,
+   "head-kb",
+   wxTRANSLATE("with --stream, how much of the start of every sample to keep "
+               "resident, in KB (0 = nothing, default 256). Raise it if slow "
+               "storage makes note attacks stutter"),
+   wxCMD_LINE_VAL_NUMBER,
+   wxCMD_LINE_PARAM_OPTIONAL},
+  {wxCMD_LINE_SWITCH,
+   NULL,
+   "bounded-build",
+   wxTRANSLATE("build the sample cache one object at a time, so that creating "
+               "it does not need enough RAM to hold the whole organ"),
+   wxCMD_LINE_VAL_NONE,
+   wxCMD_LINE_SWITCH_NEGATABLE},
   {wxCMD_LINE_PARAM,
    NULL,
    NULL,
@@ -126,6 +148,34 @@ bool GOGuiApp::OnCmdLineParsed(wxCmdLineParser &parser) {
   }
   if (res && parser.Found(OPTION_CONFIG_FILE, &str))
     m_ConfigFilePath = str.ToStdString();
+  if (res) {
+    /* -1 leaves the stored setting alone, so these only take effect when
+     * actually passed. Handy for comparing cache modes on one machine without
+     * editing the config between runs. */
+    switch (parser.FoundSwitch("stream")) {
+    case wxCMD_SWITCH_ON:
+      m_StreamOverride = 1;
+      break;
+    case wxCMD_SWITCH_OFF:
+      m_StreamOverride = 0;
+      break;
+    default:
+      break;
+    }
+    switch (parser.FoundSwitch("bounded-build")) {
+    case wxCMD_SWITCH_ON:
+      m_BoundedBuildOverride = 1;
+      break;
+    case wxCMD_SWITCH_OFF:
+      m_BoundedBuildOverride = 0;
+      break;
+    default:
+      break;
+    }
+    long headKB = 0;
+    if (parser.Found("head-kb", &headKB) && headKB >= 0)
+      m_StreamHeadKBOverride = headKB;
+  }
   if (res)
     for (unsigned i = 0; i < parser.GetParamCount(); i++)
       m_FileName = parser.GetParam(i);
@@ -170,6 +220,15 @@ bool GOGuiApp::OnInit() {
 
   mp_config = std::make_unique<GOConfig>(m_InstanceName, m_ConfigFilePath);
   mp_config->Load();
+
+  /* Applied after Load() so the command line wins over the stored settings,
+   * but only for the options actually given. */
+  if (m_StreamOverride >= 0)
+    mp_config->StreamFromCache(m_StreamOverride != 0);
+  if (m_BoundedBuildOverride >= 0)
+    mp_config->BoundedCacheBuild(m_BoundedBuildOverride != 0);
+  if (m_StreamHeadKBOverride >= 0)
+    mp_config->StreamHeadKB((unsigned)m_StreamHeadKBOverride);
 
   GOStdPath::InitLocaleDir();
   m_locale.Init(mp_config->GetLanguageId());

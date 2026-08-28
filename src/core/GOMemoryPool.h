@@ -33,6 +33,7 @@ class GOMemoryPool {
   bool m_TouchCache;
   bool m_StreamFromCache;
   size_t m_StreamHeadBytes;
+  bool m_TransientMode;
 
   void InitPool();
   void GrowPool(size_t size);
@@ -52,6 +53,19 @@ public:
   void SetMemoryLimit(size_t limit);
   void SetStreamFromCache(bool enable, size_t head_bytes = 256 * 1024);
   bool IsStreamFromCache() const { return m_StreamFromCache; }
+
+  /**
+   * Transient mode: every allocation is served by malloc() instead of the
+   * bump-allocated pool, so that Free() actually returns the memory to the
+   * system. The pool itself can never release an individual allocation
+   * (m_PoolPtr only moves forward), so a caller that loads objects one at a
+   * time and discards them again - the bounded-memory cache build - must
+   * enable this, otherwise peak memory still grows to the size of the whole
+   * organ. Not for the normal load path: pool allocation is faster and keeps
+   * the sample data contiguous.
+   */
+  void SetTransientMode(bool enable) { m_TransientMode = enable; }
+  bool IsTransientMode() const { return m_TransientMode; }
   void TouchMemory(std::atomic_bool &stop);
 
   void *Alloc(size_t length, bool final);

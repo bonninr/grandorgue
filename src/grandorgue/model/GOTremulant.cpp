@@ -47,6 +47,11 @@ void GOTremulant::LoadData(const GOFileStore &fileStore, GOMemoryPool &pool) {
   InitSoundProvider(pool);
 }
 
+void GOTremulant::UnloadData(GOMemoryPool &pool) {
+  if (m_TremulantType == GOSynthTrem && m_TremProvider)
+    m_TremProvider->ClearData();
+}
+
 bool GOTremulant::LoadCache(GOMemoryPool &pool, GOCache &cache) {
   InitSoundProvider(pool);
   return true;

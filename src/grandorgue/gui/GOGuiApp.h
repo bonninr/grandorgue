@@ -66,6 +66,11 @@ protected:
   std::string m_InstanceName;
   std::string m_ConfigFilePath;
   bool m_IsGuiOnly = false;
+  /* Sample cache overrides from the command line. -1 means "not given", so
+   * the value from the config file is kept. */
+  int m_StreamOverride = -1;
+  int m_BoundedBuildOverride = -1;
+  long m_StreamHeadKBOverride = -1;
 
 public:
   ~GOGuiApp();

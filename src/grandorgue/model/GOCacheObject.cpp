@@ -88,3 +88,11 @@ bool GOCacheObject::LoadFromCacheWithoutExc(
   }
   return m_IsReady;
 }
+
+void GOCacheObject::UnloadWithoutExc(GOMemoryPool &pool) {
+  try {
+    UnloadData(pool);
+  } catch (...) { // We must not allow unhandled exceptions here
+  }
+  m_IsReady = false;
+}

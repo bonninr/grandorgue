@@ -137,6 +137,7 @@ public:
   GOSettingBool CompressCache;
   GOSettingBool StreamFromCache;
   GOSettingUnsigned StreamHeadKB;
+  GOSettingBool BoundedCacheBuild;
   GOSettingEnum<GOInitialLoadType> LoadLastFile;
   GOSettingBool ODFCheck;
   GOSettingBool ODFHw1Check;

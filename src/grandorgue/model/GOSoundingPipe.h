@@ -79,6 +79,7 @@ private:
   const wxString &GetLoadTitle() const override { return m_Filename; }
   void Initialize() override {}
   void LoadData(const GOFileStore &fileStore, GOMemoryPool &pool) override;
+  void UnloadData(GOMemoryPool &pool) override { m_SoundProvider.ClearData(); }
   bool LoadCache(GOMemoryPool &pool, GOCache &cache) override;
   bool SaveCache(GOCacheWriter &cache) const override;
   void UpdateHash(GOHash &hash) const override;

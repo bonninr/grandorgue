@@ -396,6 +396,16 @@ void GOOrganController::LoadObjects(GOProgressMonitor &monitor) {
     dummy.resize(1024 * 1024 * 50);
     ResolveReferences();
 
+    /* If asked to, write the cache one object at a time before doing anything
+     * else. The ordinary path below then finds a cache and maps it, so sample
+     * data is never all resident at once - not even during the build, which is
+     * what otherwise sets the RAM floor for a large organ. A failure here just
+     * removes the partial file and leaves the normal load to run. */
+    if (
+      m_config.BoundedCacheBuild() && m_config.ManageCache()
+      && !wxFileExists(m_LoadedOrganInfo.cacheFilePath))
+      BuildCacheBounded(m_config.CompressCache(), monitor);
+
     /* Figure out list of pipes to load */
     GOCacheObjectDistributor objectDistributor(GetCacheObjects());
 
@@ -619,6 +629,72 @@ void GOOrganController::LoadCombination(const wxString &file) {
     wxLogError(errMsg);
     GOMessageBox(errMsg, _("Load error"), wxOK | wxICON_ERROR, NULL);
   }
+}
+
+bool GOOrganController::BuildCacheBounded(
+  bool compress, GOProgressMonitor &monitor) {
+  bool isOk = false;
+
+  DeleteCache();
+
+  GOCacheObjectDistributor objectDistributor(GetCacheObjects());
+
+  monitor.Setup(objectDistributor.GetNObjects(), _("Building sample cache"));
+
+  wxFileOutputStream file(m_LoadedOrganInfo.cacheFilePath);
+
+  if (file.IsOk()) {
+    GOCacheWriter writer(file, compress);
+
+    /* Every allocation must come from the heap here: the pool is a bump
+     * allocator whose Free() reclaims nothing, so without this the memory of
+     * each object would accumulate exactly as in the normal load path and the
+     * whole exercise would be pointless. */
+    m_pool.SetTransientMode(true);
+
+    try {
+      isOk = writer.WriteHeader();
+
+      GOHashType hash = GenerateCacheHash();
+      if (!writer.Write(&hash, sizeof(hash)))
+        isOk = false;
+
+      while (isOk) {
+        GOCacheObject *obj = objectDistributor.FetchNext();
+
+        if (!obj)
+          break;
+        if (!obj->LoadFromFileWithoutExc(m_FileStore, m_pool)) {
+          isOk = false;
+          wxLogError(obj->GetLoadError());
+        } else if (!obj->SaveCache(writer)) {
+          isOk = false;
+          wxLogError(
+            _("Save of %s to the cache failed"), obj->GetLoadTitle().c_str());
+        }
+        /* Discard right away, whether or not it saved: from here on the only
+         * copy that matters is the one in the cache file. */
+        obj->UnloadWithoutExc(m_pool);
+        if (
+          isOk
+          && !monitor.Update(objectDistributor.GetPos(), obj->GetLoadTitle()))
+          isOk = false;
+      }
+    } catch (...) {
+      m_pool.SetTransientMode(false);
+      writer.Close();
+      DeleteCache();
+      throw;
+    }
+
+    m_pool.SetTransientMode(false);
+    writer.Close();
+    if (!isOk)
+      DeleteCache();
+  } else
+    wxLogError(
+      _("Opening the cache file %s failed"), m_LoadedOrganInfo.cacheFilePath);
+  return isOk;
 }
 
 bool GOOrganController::UpdateCache(bool compress, GOProgressMonitor &monitor) {

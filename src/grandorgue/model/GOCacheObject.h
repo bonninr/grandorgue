@@ -38,6 +38,14 @@ protected:
   virtual void LoadData(const GOFileStore &fileStore, GOMemoryPool &pool) = 0;
   virtual bool LoadCache(GOMemoryPool &pool, GOCache &cache) = 0;
 
+  /**
+   * Release the sample data loaded by LoadData, returning it to the pool.
+   * The default does nothing, which is correct for objects that hold no bulk
+   * data. Only meaningful while the pool is in transient mode - see
+   * GOMemoryPool::SetTransientMode.
+   */
+  virtual void UnloadData(GOMemoryPool &pool) {}
+
 public:
   virtual ~GOCacheObject() {}
 
@@ -67,6 +75,14 @@ public:
    * If no then GetLoadError returns the exception message.
    */
   bool LoadFromCacheWithoutExc(GOMemoryPool &pool, GOCache &cache);
+
+  /**
+   * Discard the data loaded by LoadFromFileWithoutExc and mark the object as
+   * not ready, so it must be loaded again before use. Used by the bounded
+   * memory cache build, which loads, saves and discards one object at a time.
+   * Never throws.
+   */
+  void UnloadWithoutExc(GOMemoryPool &pool);
 
   virtual bool SaveCache(GOCacheWriter &cache) const = 0;
   virtual void UpdateHash(GOHash &hash) const = 0;

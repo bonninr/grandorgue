@@ -389,6 +389,13 @@ GOSettingsOptions::GOSettingsOptions(GOConfig &settings, wxWindow *parent)
     wxEXPAND | wxALL,
     5);
   m_StreamFromCache->SetValue(m_config.StreamFromCache());
+  item6->Add(
+    m_BoundedCacheBuild = new wxCheckBox(
+      this, wxID_ANY, _("Build the cache without loading the whole organ")),
+    0,
+    wxEXPAND | wxALL,
+    5);
+  m_BoundedCacheBuild->SetValue(m_config.BoundedCacheBuild());
 
   item9->Add(
     m_ODFCheck = new wxCheckBox(this, ID_ODF_CHECK, _("Perform strict ODF")),
@@ -429,6 +436,7 @@ bool GOSettingsOptions::TransferDataFromWindow() {
   m_config.CompressCache(m_CompressCache->IsChecked());
   m_config.ManageCache(m_ManageCache->IsChecked());
   m_config.StreamFromCache(m_StreamFromCache->IsChecked());
+  m_config.BoundedCacheBuild(m_BoundedCacheBuild->IsChecked());
   m_config.LoadLastFile(m_LoadLastFile->GetCurrentValue());
   m_config.ODFCheck(m_ODFCheck->IsChecked());
   m_config.ODFHw1Check(m_ODFHw1Check->IsChecked());

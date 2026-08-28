@@ -45,7 +45,8 @@ GOMemoryPool::GOMemoryPool()
     m_TouchPos(0),
     m_TouchCache(false),
     m_StreamFromCache(false),
-    m_StreamHeadBytes(256 * 1024) {
+    m_StreamHeadBytes(256 * 1024),
+    m_TransientMode(false) {
   InitPool();
 }
 
@@ -62,7 +63,9 @@ bool inline GOMemoryPool::InMemoryPool(void *ptr) {
 void *GOMemoryPool::Alloc(size_t length, bool final) {
   if (m_MemoryLimit && m_CacheSize + m_PoolSize + m_MallocSize > m_MemoryLimit)
     return NULL;
-  if (!final)
+  if (!final || m_TransientMode)
+    /* In transient mode 'final' is ignored: the caller intends to free this
+     * block again shortly, and only malloc'd blocks can actually be freed. */
     return malloc(length);
   GOMutexLocker locker(m_mutex);
   void *data = PoolAlloc(length);
@@ -95,6 +98,10 @@ void *GOMemoryPool::MoveToPool(void *data, size_t length) {
     wxLogWarning(_("Element already in the pool"));
     return data;
   }
+  if (m_TransientMode)
+    /* Leave it on the heap: moving it into the pool would make it
+     * unreclaimable, which is exactly what transient mode avoids. */
+    return data;
   void *new_data = Alloc(length, true);
   if (!new_data) {
     Free(data);
@@ -439,14 +446,16 @@ void GOMemoryPool::GrowPool(size_t length) {
 
 void GOMemoryPool::TouchMemory(std::atomic_bool &stop) {
   if (m_StreamFromCache) {
-    if (!m_TouchCache) {
-      for (int i = 0; m_TouchPos < m_PoolSize; m_TouchPos += m_PageSize, i++) {
-        touchMemory(m_PoolStart + m_TouchPos);
-        if (stop.load() || i > 1000)
-          return;
-      }
+    /* Keep the pool (anonymous, non-cache data) resident, but never walk the
+     * cache mapping: paging that in on demand is the whole point of streaming.
+     * m_TouchPos restarts at 0 after a complete pass so the pool stays warm -
+     * without the reset this degenerates into a no-op after the first pass. */
+    for (int i = 0; m_TouchPos < m_PoolSize; m_TouchPos += m_PageSize, i++) {
+      touchMemory(m_PoolStart + m_TouchPos);
+      if (stop.load() || i > 1000)
+        return;
     }
-    m_TouchCache = !m_TouchCache;
+    m_TouchPos = 0;
     return;
   }
   if (m_TouchCache) {

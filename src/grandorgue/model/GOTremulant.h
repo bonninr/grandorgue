@@ -43,6 +43,8 @@ private:
 
   void Initialize() override;
   void LoadData(const GOFileStore &fileStore, GOMemoryPool &pool) override;
+  // Safe to discard: LoadCache regenerates the synthesized waveform.
+  void UnloadData(GOMemoryPool &pool) override;
   bool LoadCache(GOMemoryPool &pool, GOCache &cache) override;
   bool SaveCache(GOCacheWriter &cache) const override { return true; }
   void UpdateHash(GOHash &hash) const override {}
