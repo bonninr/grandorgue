@@ -120,6 +120,9 @@ GOOrganController::GOOrganController(GOConfig &config, bool isAppInitialized)
   // fails before reaching that point), which would otherwise leak it.
   m_elementcreators.push_back(m_setter);
   m_pool.SetMemoryLimit(m_config.MemoryLimit() * 1024 * 1024);
+  m_pool.SetStreamFromCache(
+    m_config.StreamFromCache(),
+    (size_t)m_config.StreamHeadKB() * 1024);
 }
 
 GOOrganController::~GOOrganController() {

@@ -308,6 +308,8 @@ GOConfig::GOConfig(
     ReleaseLoad(this, GENERAL, wxT("ReleaseLoad"), 0, 1, 1),
     ManageCache(this, GENERAL, wxT("ManageCache"), true),
     CompressCache(this, GENERAL, wxT("CompressCache"), false),
+    StreamFromCache(this, GENERAL, wxT("StreamFromCache"), false),
+    StreamHeadKB(this, GENERAL, wxT("StreamHeadKB"), 0, 65536, 256),
     LoadLastFile(
       this,
       GENERAL,

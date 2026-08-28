@@ -31,6 +31,8 @@ class GOMemoryPool {
   unsigned m_AllocError;
   size_t m_TouchPos;
   bool m_TouchCache;
+  bool m_StreamFromCache;
+  size_t m_StreamHeadBytes;
 
   void InitPool();
   void GrowPool(size_t size);
@@ -48,6 +50,8 @@ public:
   GOMemoryPool();
   ~GOMemoryPool();
   void SetMemoryLimit(size_t limit);
+  void SetStreamFromCache(bool enable, size_t head_bytes = 256 * 1024);
+  bool IsStreamFromCache() const { return m_StreamFromCache; }
   void TouchMemory(std::atomic_bool &stop);
 
   void *Alloc(size_t length, bool final);

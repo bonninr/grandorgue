@@ -43,7 +43,9 @@ GOMemoryPool::GOMemoryPool()
     m_MemoryLimit(0),
     m_AllocError(0),
     m_TouchPos(0),
-    m_TouchCache(false) {
+    m_TouchCache(false),
+    m_StreamFromCache(false),
+    m_StreamHeadBytes(256 * 1024) {
   InitPool();
 }
 
@@ -158,10 +160,21 @@ void *GOMemoryPool::GetCacheData(size_t offset, size_t length) {
     return NULL;
   if (m_CacheStart) {
     char *data = m_CacheStart + offset;
-    for (unsigned i = 0; i < length; i += m_PageSize)
-      touchMemory(data + i);
-    if (length)
-      touchMemory(data + length - 1);
+    if (m_StreamFromCache) {
+      /* head_bytes==0 means touch nothing (pure demand paging). */
+      size_t touch_len = m_StreamHeadBytes;
+      if (touch_len > length)
+        touch_len = length;
+      for (size_t i = 0; i < touch_len; i += m_PageSize)
+        touchMemory(data + i);
+      if (touch_len)
+        touchMemory(data + touch_len - 1);
+    } else {
+      for (unsigned i = 0; i < length; i += m_PageSize)
+        touchMemory(data + i);
+      if (length)
+        touchMemory(data + length - 1);
+    }
     AddPoolAlloc(data);
     return data;
   }
@@ -186,6 +199,11 @@ size_t GOMemoryPool::GetMemoryLimit() { return m_MemoryLimit; }
 bool GOMemoryPool::IsPoolFull() { return m_AllocError > 0; }
 
 void GOMemoryPool::SetMemoryLimit(size_t limit) { m_MemoryLimit = limit; }
+
+void GOMemoryPool::SetStreamFromCache(bool enable, size_t head_bytes) {
+  m_StreamFromCache = enable;
+  m_StreamHeadBytes = head_bytes;
+}
 
 bool GOMemoryPool::SetCacheFile(wxFile &cache_file) {
   bool result = false;
@@ -420,6 +438,17 @@ void GOMemoryPool::GrowPool(size_t length) {
 }
 
 void GOMemoryPool::TouchMemory(std::atomic_bool &stop) {
+  if (m_StreamFromCache) {
+    if (!m_TouchCache) {
+      for (int i = 0; m_TouchPos < m_PoolSize; m_TouchPos += m_PageSize, i++) {
+        touchMemory(m_PoolStart + m_TouchPos);
+        if (stop.load() || i > 1000)
+          return;
+      }
+    }
+    m_TouchCache = !m_TouchCache;
+    return;
+  }
   if (m_TouchCache) {
     for (int i = 0; m_TouchPos < m_CacheSize; m_TouchPos += m_PageSize, i++) {
       touchMemory(m_CacheStart + m_TouchPos);

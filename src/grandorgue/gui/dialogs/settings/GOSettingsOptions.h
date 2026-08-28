@@ -54,6 +54,7 @@ private:
   wxCheckBox *m_Limit;
   wxCheckBox *m_CompressCache;
   wxCheckBox *m_ManageCache;
+  wxCheckBox *m_StreamFromCache;
   GOChoice<GOInitialLoadType> *m_LoadLastFile;
   wxCheckBox *m_Scale;
   wxCheckBox *m_Random;

@@ -382,6 +382,13 @@ GOSettingsOptions::GOSettingsOptions(GOConfig &settings, wxWindow *parent)
     5);
   m_CompressCache->SetValue(m_config.CompressCache());
   m_ManageCache->SetValue(m_config.ManageCache());
+  item6->Add(
+    m_StreamFromCache = new wxCheckBox(
+      this, wxID_ANY, _("Stream samples from cache (NVMe, demand-paged)")),
+    0,
+    wxEXPAND | wxALL,
+    5);
+  m_StreamFromCache->SetValue(m_config.StreamFromCache());
 
   item9->Add(
     m_ODFCheck = new wxCheckBox(this, ID_ODF_CHECK, _("Perform strict ODF")),
@@ -421,6 +428,7 @@ bool GOSettingsOptions::TransferDataFromWindow() {
   m_config.ManagePolyphony(m_Limit->IsChecked());
   m_config.CompressCache(m_CompressCache->IsChecked());
   m_config.ManageCache(m_ManageCache->IsChecked());
+  m_config.StreamFromCache(m_StreamFromCache->IsChecked());
   m_config.LoadLastFile(m_LoadLastFile->GetCurrentValue());
   m_config.ODFCheck(m_ODFCheck->IsChecked());
   m_config.ODFHw1Check(m_ODFHw1Check->IsChecked());

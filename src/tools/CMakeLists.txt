@@ -36,3 +36,8 @@ if (INSTALL_DEPEND STREQUAL "ON")
 endif()
 
 add_custom_target(runperftest COMMAND GrandOrguePerfTest "${CMAKE_SOURCE_DIR}/tests" DEPENDS GrandOrguePerfTest)
+
+add_executable(GOLoadProbe GOLoadProbe.cpp)
+BUILD_EXECUTABLE(GOLoadProbe)
+target_include_directories(GOLoadProbe PUBLIC ${CMAKE_SOURCE_DIR}/src/grandorgue)
+target_link_libraries(GOLoadProbe golib)
