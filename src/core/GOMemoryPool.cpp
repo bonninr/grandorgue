@@ -44,9 +44,9 @@ GOMemoryPool::GOMemoryPool()
     m_AllocError(0),
     m_TouchPos(0),
     m_TouchCache(false),
-    m_StreamFromCache(false),
+    m_IsStreamFromCache(false),
     m_StreamHeadBytes(256 * 1024),
-    m_TransientMode(false) {
+    m_IsTransientMode(false) {
   InitPool();
 }
 
@@ -63,7 +63,7 @@ bool inline GOMemoryPool::InMemoryPool(void *ptr) {
 void *GOMemoryPool::Alloc(size_t length, bool final) {
   if (m_MemoryLimit && m_CacheSize + m_PoolSize + m_MallocSize > m_MemoryLimit)
     return NULL;
-  if (m_TransientMode)
+  if (m_IsTransientMode)
     /* 'final' is ignored here: the caller intends to free this block again
      * shortly, and only malloc'd blocks can actually be freed.
      *
@@ -105,7 +105,7 @@ void *GOMemoryPool::MoveToPool(void *data, size_t length) {
     wxLogWarning(_("Element already in the pool"));
     return data;
   }
-  if (m_TransientMode)
+  if (m_IsTransientMode)
     /* Leave it on the heap: moving it into the pool would make it
      * unreclaimable, which is exactly what transient mode avoids. */
     return data;
@@ -174,15 +174,15 @@ void *GOMemoryPool::GetCacheData(size_t offset, size_t length) {
     return NULL;
   if (m_CacheStart) {
     char *data = m_CacheStart + offset;
-    if (m_StreamFromCache) {
-      /* head_bytes==0 means touch nothing (pure demand paging). */
-      size_t touch_len = m_StreamHeadBytes;
-      if (touch_len > length)
-        touch_len = length;
-      for (size_t i = 0; i < touch_len; i += m_PageSize)
+    if (m_IsStreamFromCache) {
+      /* headBytes==0 means touch nothing (pure demand paging). */
+      size_t touchLen = m_StreamHeadBytes;
+      if (touchLen > length)
+        touchLen = length;
+      for (size_t i = 0; i < touchLen; i += m_PageSize)
         touchMemory(data + i);
-      if (touch_len)
-        touchMemory(data + touch_len - 1);
+      if (touchLen)
+        touchMemory(data + touchLen - 1);
     } else {
       for (unsigned i = 0; i < length; i += m_PageSize)
         touchMemory(data + i);
@@ -214,9 +214,9 @@ bool GOMemoryPool::IsPoolFull() { return m_AllocError > 0; }
 
 void GOMemoryPool::SetMemoryLimit(size_t limit) { m_MemoryLimit = limit; }
 
-void GOMemoryPool::SetStreamFromCache(bool enable, size_t head_bytes) {
-  m_StreamFromCache = enable;
-  m_StreamHeadBytes = head_bytes;
+void GOMemoryPool::SetStreamFromCache(bool isEnabled, size_t headBytes) {
+  m_IsStreamFromCache = isEnabled;
+  m_StreamHeadBytes = headBytes;
 }
 
 bool GOMemoryPool::SetCacheFile(wxFile &cache_file) {
@@ -452,7 +452,7 @@ void GOMemoryPool::GrowPool(size_t length) {
 }
 
 void GOMemoryPool::TouchMemory(std::atomic_bool &stop) {
-  if (m_StreamFromCache) {
+  if (m_IsStreamFromCache) {
     /* Keep the pool (anonymous, non-cache data) resident, but never walk the
      * cache mapping: paging that in on demand is the whole point of streaming.
      * m_TouchPos restarts at 0 after a complete pass so the pool stays warm -

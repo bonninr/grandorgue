@@ -81,10 +81,10 @@ public:
   }
 
   int OnRun() override {
-    bool stream = false;
-    bool boundedBuild = false;
-    bool keepCache = false;
-    unsigned head_kb = 256;
+    bool isStream = false;
+    bool isBoundedBuild = false;
+    bool isKeepCache = false;
+    unsigned headKb = 256;
     wxString organPath;
     wxString workDir;
 
@@ -92,13 +92,13 @@ public:
       wxString a = argv[i];
 
       if (a == "--stream")
-        stream = true;
+        isStream = true;
       else if (a == "--bounded-build")
-        boundedBuild = true;
+        isBoundedBuild = true;
       else if (a == "--keep-cache")
-        keepCache = true;
+        isKeepCache = true;
       else if (a == "--head-kb" && i + 1 < argc)
-        head_kb = wxAtoi(argv[++i]);
+        headKb = wxAtoi(argv[++i]);
       else if (a == "--work-dir" && i + 1 < argc)
         workDir = argv[++i];
       else if (!a.StartsWith("-"))
@@ -122,7 +122,7 @@ public:
     wxFileName::Mkdir(cacheDir, wxS_DIR_DEFAULT, wxPATH_MKDIR_FULL);
 
     std::cout << "organ=" << organPath << "\nstream=" << stream
-              << " head_kb=" << head_kb << " bounded_build=" << boundedBuild
+              << " head_kb=" << headKb << " bounded_build=" << isBoundedBuild
               << "\nwork_dir=" << workDir << "\n";
 
     std::string confPath = std::string(confDir.mb_str()) + "/GrandOrgue.conf";
@@ -130,15 +130,15 @@ public:
     settings.Load();
     settings.ManageCache(true);
     settings.CompressCache(false);
-    settings.StreamFromCache(stream);
-    settings.StreamHeadKB(head_kb);
-    settings.BoundedCacheBuild(boundedBuild);
+    settings.StreamFromCache(isStream);
+    settings.StreamHeadKB(headKb);
+    settings.BoundedCacheBuild(isBoundedBuild);
     settings.OrganCachePath(cacheDir);
 
     /* Unless asked otherwise start from a cold cache, so that a run measures
      * the build as well - which is the case a small machine actually fails on.
      * With --keep-cache a second run measures the load-from-cache path only. */
-    if (!keepCache) {
+    if (!isKeepCache) {
       wxArrayString stale;
       wxDir::GetAllFiles(cacheDir, &stale);
       for (size_t i = 0; i < stale.GetCount(); i++)

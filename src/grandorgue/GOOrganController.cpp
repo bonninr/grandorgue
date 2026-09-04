@@ -642,7 +642,7 @@ bool GOOrganController::ShouldCompressCache() const {
 }
 
 bool GOOrganController::BuildCacheBounded(
-  bool compress, GOProgressMonitor &monitor) {
+  bool isCompress, GOProgressMonitor &monitor) {
   bool isOk = false;
 
   DeleteCache();
@@ -654,7 +654,7 @@ bool GOOrganController::BuildCacheBounded(
   wxFileOutputStream file(m_LoadedOrganInfo.cacheFilePath);
 
   if (file.IsOk()) {
-    GOCacheWriter writer(file, compress);
+    GOCacheWriter writer(file, isCompress);
 
     /* Every allocation must come from the heap here: the pool is a bump
      * allocator whose Free() reclaims nothing, so without this the memory of

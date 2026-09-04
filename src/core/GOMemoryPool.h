@@ -31,9 +31,9 @@ class GOMemoryPool {
   unsigned m_AllocError;
   size_t m_TouchPos;
   bool m_TouchCache;
-  bool m_StreamFromCache;
+  bool m_IsStreamFromCache;
   size_t m_StreamHeadBytes;
-  bool m_TransientMode;
+  bool m_IsTransientMode;
 
   void InitPool();
   void GrowPool(size_t size);
@@ -51,8 +51,8 @@ public:
   GOMemoryPool();
   ~GOMemoryPool();
   void SetMemoryLimit(size_t limit);
-  void SetStreamFromCache(bool enable, size_t head_bytes = 256 * 1024);
-  bool IsStreamFromCache() const { return m_StreamFromCache; }
+  void SetStreamFromCache(bool isEnabled, size_t headBytes = 256 * 1024);
+  bool IsStreamFromCache() const { return m_IsStreamFromCache; }
 
   /**
    * Transient mode: every allocation is served by malloc() instead of the
@@ -64,8 +64,8 @@ public:
    * organ. Not for the normal load path: pool allocation is faster and keeps
    * the sample data contiguous.
    */
-  void SetTransientMode(bool enable) { m_TransientMode = enable; }
-  bool IsTransientMode() const { return m_TransientMode; }
+  void SetTransientMode(bool isEnabled) { m_IsTransientMode = isEnabled; }
+  bool IsTransientMode() const { return m_IsTransientMode; }
   void TouchMemory(std::atomic_bool &stop);
 
   void *Alloc(size_t length, bool final);
