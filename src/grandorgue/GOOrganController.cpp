@@ -403,7 +403,7 @@ void GOOrganController::LoadObjects(GOProgressMonitor &monitor) {
     if (
       m_config.BoundedCacheBuild() && m_config.ManageCache()
       && !wxFileExists(m_LoadedOrganInfo.cacheFilePath))
-      BuildCacheBounded(m_config.CompressCache(), monitor);
+      BuildCacheBounded(ShouldCompressCache(), monitor);
 
     /* Figure out list of pipes to load */
     GOCacheObjectDistributor objectDistributor(GetCacheObjects());
@@ -498,7 +498,7 @@ void GOOrganController::LoadObjects(GOProgressMonitor &monitor) {
         if (objectDistributor.IsComplete())
           m_Cacheable = true;
         if (m_config.ManageCache() && m_Cacheable)
-          UpdateCache(m_config.CompressCache(), monitor);
+          UpdateCache(ShouldCompressCache(), monitor);
       }
 
       // Despite a possible exception automatic calling ~GOLoadThread from
@@ -628,6 +628,17 @@ void GOOrganController::LoadCombination(const wxString &file) {
     wxLogError(errMsg);
     GOMessageBox(errMsg, _("Load error"), wxOK | wxICON_ERROR, NULL);
   }
+}
+
+bool GOOrganController::ShouldCompressCache() const {
+  const bool isCompressAsked = m_config.CompressCache();
+  const bool isDefeatedByStreaming = isCompressAsked && m_config.StreamFromCache();
+
+  if (isDefeatedByStreaming)
+    wxLogWarning(_("Sample streaming requires a cache that can be memory "
+                   "mapped, so this cache is being written uncompressed. "
+                   "Turn off sample streaming to compress it instead."));
+  return isCompressAsked && !isDefeatedByStreaming;
 }
 
 bool GOOrganController::BuildCacheBounded(

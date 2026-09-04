@@ -213,6 +213,19 @@ public:
    * and the caller falls back to the normal in-memory load.
    */
   bool BuildCacheBounded(bool compress, GOProgressMonitor &monitor);
+
+  /**
+   * Whether to zlib-compress the cache file, which is not simply
+   * m_config.CompressCache(): a compressed cache cannot be memory mapped
+   * (GOCache falls back to decompressing every block into the pool), so it
+   * silently defeats streaming. When both are asked for, streaming wins and
+   * the user is told why.
+   *
+   * Note this is only about compressing the cache *file*. Per-sample
+   * compression (LosslessCompression) keeps the cache mappable and composes
+   * with streaming perfectly well.
+   */
+  bool ShouldCompressCache() const;
   void DeleteCache();
   void DeleteSettings();
   void PrepareRecording();
