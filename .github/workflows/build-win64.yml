@@ -30,7 +30,7 @@ jobs:
         echo "project_ver=$PROJECT_VERSION" >>$GITHUB_OUTPUT
         echo "build_ver=$BUILD_VERSION" >>$GITHUB_OUTPUT
         echo "full_ver=$PROJECT_VERSION-$BUILD_VERSION" >>$GITHUB_OUTPUT
-        echo "release_flag=OFF" >>$GITHUB_OUTPUT
+        echo "release_flag=ON" >>$GITHUB_OUTPUT
         echo "asan_flag=" >>$GITHUB_OUTPUT
     - name: Display
       run: |
@@ -53,7 +53,7 @@ jobs:
         ${{needs.calc_ver.outputs.build_ver}}
         ${{github.workspace}}
         ""
-        OFF
+        ON
         ""
         ""
     - name: Upload result

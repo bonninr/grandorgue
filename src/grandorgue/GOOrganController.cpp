@@ -872,8 +872,17 @@ GOOrgan GOOrganController::GetOrganInfo() {
 }
 
 wxString GOOrganController::GetCombinationsDir() const {
-  return wxFileName(m_config.OrganCombinationsPath(), GetOrganName())
-    .GetFullPath();
+  // GetOrganName() is free text from the ODF and very often carries the
+  // manuals/stops notation ("Nancy Demo Build III/50"), so it can contain a
+  // path separator. wxFileName(path, name) requires name to be a bare file
+  // name: a separator asserts in debug builds and, with asserts compiled out,
+  // silently puts the combinations somewhere else entirely. Only separators
+  // are replaced, so organ directories that work today keep their names.
+  wxString dirName = GetOrganName();
+
+  dirName.Replace(wxT("/"), wxT("-"));
+  dirName.Replace(wxT("\\"), wxT("-"));
+  return wxFileName(m_config.OrganCombinationsPath(), dirName).GetFullPath();
 }
 
 void GOOrganController::LoadMIDIFile(
