@@ -56,10 +56,59 @@ jobs:
         ON
         ""
         ""
+    - name: Rename artifacts
+      # The build names its output exactly like an official GrandOrgue release.
+      # This is an unofficial fork, so give the files a name nobody can mistake
+      # for one - including once they are sitting in someone's downloads folder.
+      working-directory: ${{github.workspace}}/build/win64
+      run: |
+        VER="${{needs.calc_ver.outputs.full_ver}}"
+        BASE="openpipes-grandorgue-streaming-$VER"
+        mkdir -p dist
+        for f in grandorgue*; do
+          test -f "$f" || continue
+          case "$f" in
+            *.exe) cp "$f" "dist/$BASE-setup.exe" ;;
+            *.zip) cp "$f" "dist/$BASE-portable.zip" ;;
+          esac
+        done
+        ls -lh dist
+
     - name: Upload result
       uses: actions/upload-artifact@v4
       with:
-        name: grandorgue-win64
+        name: openpipes-grandorgue-streaming
         path: |
-          ${{github.workspace}}/build/win64/grandorgue*
+          ${{github.workspace}}/build/win64/dist/*
         if-no-files-found: error
+
+    - name: Publish rolling preview release
+      # One moving tag instead of a release per commit, so a link that has been
+      # posted somewhere keeps working and always resolves to the newest build.
+      env:
+        GH_TOKEN: ${{secrets.GITHUB_TOKEN}}
+      working-directory: ${{github.workspace}}/build/win64/dist
+      run: |
+        TAG=streaming-preview
+        cat > NOTES.md <<'EOF'
+        Preview build of GrandOrgue carrying the OpenPipes sample-streaming engine.
+
+        **This is not a GrandOrgue release** and the GrandOrgue project does not
+        support it. Report anything wrong here, not upstream:
+        https://github.com/bonninr/grandorgue/issues
+
+        Streaming is off by default. Turn it on from the command line:
+
+            GrandOrgue.exe --stream --head-kb 256 "your organ.organ"
+
+        or tick *Stream samples from cache* under Settings -> Options.
+        `--head-kb` sets how much of each sample stays in RAM: lower saves more
+        memory and leans harder on the disk. Needs an SSD.
+        EOF
+        gh release delete "$TAG" --yes --cleanup-tag 2>/dev/null || true
+        gh release create "$TAG" openpipes-* \
+          --title "GrandOrgue + streaming engine (OpenPipes preview)" \
+          --notes-file NOTES.md \
+          --prerelease
+        echo "released:"
+        gh release view "$TAG" --json url --jq .url
