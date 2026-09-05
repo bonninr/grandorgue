@@ -98,9 +98,16 @@ static const wxCmdLineEntryDesc cmd_line_desc[] = {
    NULL,
    "stream",
    wxTRANSLATE("page sample data from the cache on demand instead of loading "
-               "it all into RAM (needs a fast SSD); --no-stream forces off"),
+               "it all into RAM (needs a fast SSD)"),
    wxCMD_LINE_VAL_NONE,
-   wxCMD_LINE_SWITCH_NEGATABLE},
+   0},
+  {wxCMD_LINE_SWITCH,
+   NULL,
+   "no-stream",
+   wxTRANSLATE("load all sample data into RAM, overriding a stored "
+               "streaming setting"),
+   wxCMD_LINE_VAL_NONE,
+   0},
   {wxCMD_LINE_OPTION,
    NULL,
    "head-kb",
@@ -115,7 +122,14 @@ static const wxCmdLineEntryDesc cmd_line_desc[] = {
    wxTRANSLATE("build the sample cache one object at a time, so that creating "
                "it does not need enough RAM to hold the whole organ"),
    wxCMD_LINE_VAL_NONE,
-   wxCMD_LINE_SWITCH_NEGATABLE},
+   0},
+  {wxCMD_LINE_SWITCH,
+   NULL,
+   "no-bounded-build",
+   wxTRANSLATE("build the sample cache the ordinary way, overriding a stored "
+               "setting"),
+   wxCMD_LINE_VAL_NONE,
+   0},
   {wxCMD_LINE_PARAM,
    NULL,
    NULL,
@@ -152,26 +166,14 @@ bool GOGuiApp::OnCmdLineParsed(wxCmdLineParser &parser) {
     /* -1 leaves the stored setting alone, so these only take effect when
      * actually passed. Handy for comparing cache modes on one machine without
      * editing the config between runs. */
-    switch (parser.FoundSwitch("stream")) {
-    case wxCMD_SWITCH_ON:
+    if (parser.FoundSwitch("stream") == wxCMD_SWITCH_ON)
       m_StreamOverride = 1;
-      break;
-    case wxCMD_SWITCH_OFF:
+    if (parser.FoundSwitch("no-stream") == wxCMD_SWITCH_ON)
       m_StreamOverride = 0;
-      break;
-    default:
-      break;
-    }
-    switch (parser.FoundSwitch("bounded-build")) {
-    case wxCMD_SWITCH_ON:
+    if (parser.FoundSwitch("bounded-build") == wxCMD_SWITCH_ON)
       m_BoundedBuildOverride = 1;
-      break;
-    case wxCMD_SWITCH_OFF:
+    if (parser.FoundSwitch("no-bounded-build") == wxCMD_SWITCH_ON)
       m_BoundedBuildOverride = 0;
-      break;
-    default:
-      break;
-    }
     long headKB = 0;
     if (parser.Found("head-kb", &headKB) && headKB >= 0)
       m_StreamHeadKBOverride = headKB;
