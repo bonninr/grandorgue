@@ -121,7 +121,7 @@ public:
     wxFileName::Mkdir(confDir, wxS_DIR_DEFAULT, wxPATH_MKDIR_FULL);
     wxFileName::Mkdir(cacheDir, wxS_DIR_DEFAULT, wxPATH_MKDIR_FULL);
 
-    std::cout << "organ=" << organPath << "\nstream=" << stream
+    std::cout << "organ=" << organPath << "\nstream=" << isStream
               << " head_kb=" << headKb << " bounded_build=" << isBoundedBuild
               << "\nwork_dir=" << workDir << "\n";
 
