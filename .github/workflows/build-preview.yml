@@ -1,0 +1,153 @@
+name: Build preview
+
+# Builds the streaming fork for every platform OpenPipes ships, and publishes
+# them together to one rolling prerelease. Upstream's own `Build` workflow is
+# disabled on this fork; this replaces it with a smaller matrix plus packaging.
+
+on:
+  push:
+    branches: [feature/sample-streaming]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+# Two pushes in quick succession would otherwise race over the same release tag.
+concurrency:
+  group: streaming-preview
+  cancel-in-progress: false
+
+jobs:
+  calc_ver:
+    runs-on: ubuntu-latest
+    outputs:
+      project_ver: ${{steps.vers.outputs.project_ver}}
+      build_ver: ${{steps.vers.outputs.build_ver}}
+      full_ver: ${{steps.vers.outputs.full_ver}}
+      release_flag: ${{steps.vers.outputs.release_flag}}
+    steps:
+    - uses: actions/checkout@v4.1.1
+    - name: Calculate versions
+      id: vers
+      shell: bash
+      run: |
+        git fetch --prune --unshallow --tags || true
+        GIT_VERSION=`git describe --tags 2>/dev/null || echo "3.18.0-0.streaming"`
+        PROJECT_VERSION=`echo $GIT_VERSION | cut -d- -f1`
+        BUILD_VERSION=`echo $GIT_VERSION | cut -d- -f2-3 --output-delimiter=.`
+        echo "project_ver=$PROJECT_VERSION" >>$GITHUB_OUTPUT
+        echo "build_ver=$BUILD_VERSION" >>$GITHUB_OUTPUT
+        echo "full_ver=$PROJECT_VERSION-$BUILD_VERSION" >>$GITHUB_OUTPUT
+        # ON selects -O3; with it unset the build is -Og, which is useless for
+        # judging audio timing and produces a 200 MB executable.
+        echo "release_flag=ON" >>$GITHUB_OUTPUT
+
+  build:
+    needs: [calc_ver]
+    runs-on: ${{matrix.run_on}}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+        # Raspberry Pi OS 64-bit, which is what Pipebian64 is built on
+        - {run_on: ubuntu-22.04,   for: linux-aarch64,   prepare: debian-based, build_on: linux, wx_version: wx32, name: raspi-arm64}
+        - {run_on: ubuntu-22.04,   for: linux-armhf,     prepare: debian-based, build_on: linux, wx_version: wx32, name: raspi-armhf}
+        - {run_on: ubuntu-22.04,   for: linux,           prepare: debian-based, build_on: linux, wx_version: wx32, name: linux-x86_64}
+        - {run_on: ubuntu-22.04,   for: appimage-x86_64, prepare: debian-based, build_on: linux, wx_version: wx32, name: linux-appimage}
+        - {run_on: macos-14,       for: osx,             prepare: osx,          build_on: osx,                     name: macos-arm64}
+        - {run_on: macos-15-intel, for: osx,             prepare: osx,          build_on: osx,                     name: macos-intel}
+        - {run_on: ubuntu-latest,  for: win64,           prepare: debian-based, build_on: linux,                   name: windows-x86_64}
+    steps:
+    - uses: actions/checkout@v4.1.1
+      with:
+        submodules: true
+
+    - name: Install Dependencies
+      run: ${{github.workspace}}/build-scripts/for-${{matrix.for}}/prepare-${{matrix.prepare}}.sh "${{matrix.wx_version}}"
+
+    - name: Build
+      run: >
+        ${{github.workspace}}/build-scripts/for-${{matrix.for}}/build-on-${{matrix.build_on}}.sh
+        ${{needs.calc_ver.outputs.project_ver}}
+        ${{needs.calc_ver.outputs.build_ver}}
+        ${{github.workspace}}
+        ""
+        ${{needs.calc_ver.outputs.release_flag}}
+        ""
+        ""
+
+    - name: Rename artifacts
+      # The build names its output exactly like an official GrandOrgue release.
+      # This is an unofficial fork, so give the files a name nobody can mistake
+      # for one - including once they sit in someone's downloads folder. The
+      # rest of the upstream name carries platform and architecture, so keep it.
+      working-directory: ${{github.workspace}}/build/${{matrix.for}}
+      run: |
+        mkdir -p dist
+        shopt -s nullglob
+        for f in grandorgue*${{needs.calc_ver.outputs.full_ver}}*; do
+          test -f "$f" || continue
+          cp "$f" "dist/openpipes-grandorgue-streaming${f#grandorgue}"
+        done
+        ls -lh dist
+        test -n "$(ls -A dist)" || { echo "no artifacts produced"; exit 1; }
+
+    - name: Upload result
+      uses: actions/upload-artifact@v4
+      with:
+        name: openpipes-${{matrix.name}}
+        path: ${{github.workspace}}/build/${{matrix.for}}/dist/*
+        if-no-files-found: error
+
+  release:
+    # One job publishes everything once, after every platform has finished.
+    # Letting each build job touch the release would have them racing.
+    needs: [calc_ver, build]
+    if: always() && needs.build.result != 'cancelled'
+    runs-on: ubuntu-latest
+    steps:
+    - name: Collect artifacts
+      uses: actions/download-artifact@v4
+      with:
+        path: staging
+        pattern: openpipes-*
+        merge-multiple: true
+
+    - name: Publish rolling preview release
+      env:
+        GH_TOKEN: ${{secrets.GITHUB_TOKEN}}
+        GH_REPO: ${{github.repository}}
+      working-directory: staging
+      run: |
+        ls -lh
+        TAG=streaming-preview
+        cat > NOTES.md <<'EOF'
+        Preview build of GrandOrgue carrying the OpenPipes sample-streaming engine,
+        for Windows, Linux x86_64, Raspberry Pi (64-bit and armhf) and macOS.
+
+        **This is not a GrandOrgue release** and the GrandOrgue project does not
+        support it. Report anything wrong here, not upstream:
+        https://github.com/bonninr/grandorgue/issues
+
+        Streaming is off by default. Turn it on from the command line:
+
+            grandorgue --stream --head-kb 256 "your organ.organ"
+
+        or tick *Stream samples from cache* under Settings -> Options.
+
+        `--head-kb` sets how much of the start of each sample stays in RAM. Lower
+        saves more memory and leans harder on your storage; 256 is a sensible
+        start. Add `--bounded-build` the first time you load a set too large to
+        fit in memory, so the sample cache can be created at all.
+
+        Wants an SSD. On a Raspberry Pi that means a USB SSD or an NVMe hat - an
+        SD card will not keep up.
+        EOF
+        rm -f NOTES.md.bak
+        gh release delete "$TAG" --yes --cleanup-tag 2>/dev/null || true
+        gh release create "$TAG" openpipes-* \
+          --title "GrandOrgue + streaming engine (OpenPipes preview)" \
+          --notes-file NOTES.md \
+          --prerelease
+        echo "released:"
+        gh release view "$TAG" --json url --jq .url
