@@ -27,6 +27,7 @@
 #include "model/GOManual.h"
 #include "model/GORank.h"
 #include "model/GOWindchest.h"
+#include "model/GOWindchest.h"
 
 #include "GOOrgan.h"
 #include "GOOrganController.h"
@@ -136,6 +137,26 @@ public:
         }
         std::cout << "  stops    : " << nStops << "\n";
         std::cout << "  couplers : " << nCouplers << "\n";
+        std::cout << "  voicing  : " << (isNoVoicing ? "off" : "on")
+                  << "
+";
+        std::cout << "  windmodel: " << (isWindModel ? "on" : "off")
+                  << "
+";
+
+        unsigned nWindLimited = 0;
+
+        for (unsigned n = controller.GetWindchestCount(), chestI = 0;
+             chestI < n;
+             chestI++) {
+          GOWindchest *pChest = controller.GetWindchest(chestI);
+
+          if (pChest && pChest->HasWindModel())
+            nWindLimited++;
+        }
+        std::cout << "  wind-limited chests: " << nWindLimited
+                  << "
+";
       }
       controller.Clear();
     }
