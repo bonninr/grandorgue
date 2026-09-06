@@ -91,11 +91,11 @@ public:
       const wxString errMsg = controller.Load(organ, wxEmptyString, true, monitor);
 
       if (!errMsg.IsEmpty()) {
-        std::cout << "LOAD FAILED: " << errMsg.ToStdString() << "\n";
+        std::cout << "LOAD FAILED: " << errMsg.ToUTF8().data() << "\n";
         result = 1;
       } else {
         std::cout << "LOAD OK\n";
-        std::cout << "  organ    : " << controller.GetOrganName().ToStdString()
+        std::cout << "  organ    : " << controller.GetOrganName().ToUTF8().data()
                   << "\n";
         std::cout << "  manuals  : " << controller.GetManualAndPedalCount()
                   << " (first " << controller.GetFirstManualIndex() << ")\n";
@@ -116,7 +116,7 @@ public:
             nStops += pManual->GetStopCount();
             nCouplers += pManual->GetCouplerCount();
             std::cout << "  manual " << manualI << " : "
-                      << pManual->GetName().ToStdString() << ", "
+                      << pManual->GetName().ToUTF8().data() << ", "
                       << pManual->GetStopCount() << " stops, "
                       << pManual->GetCouplerCount() << " couplers, keys "
                       << pManual->GetFirstAccessibleKeyMIDINoteNumber() << "+"
