@@ -80,7 +80,8 @@ void GOHauptwerkToOdf::FillReadFilter(
     wxT("NormalMIDINoteNumber"),
     wxT("Pitch_Tempered_RankBasePitch64ftHarmonicNum"),
     wxT("Pitch_OriginalOrgan_PitchHz"),
-    wxT("WindSupply_OutputWindCompartmentID")};
+    wxT("WindSupply_SourceWindCompartmentID"),
+    wxT("WindSupply_MassFlowRateKilogramsPerSecAtReferencePressureDiff")};
   outFilter[WX_LAYER] = {
     WX_LAYER_ID,
     WX_PIPE_ID,
@@ -339,7 +340,7 @@ void GOHauptwerkToOdf::BuildRank(
     firstMidiNote = pipes[0]->GetLong(wxT("NormalMIDINoteNumber"), 36);
 
     const auto wcIt = m_WindchestNumberById.find(
-      pipes[0]->GetLong(wxT("WindSupply_OutputWindCompartmentID")));
+      pipes[0]->GetLong(wxT("WindSupply_SourceWindCompartmentID")));
 
     if (wcIt != m_WindchestNumberById.end())
       windchestN = wcIt->second;
@@ -697,9 +698,9 @@ void GOHauptwerkToOdf::BuildEnclosures() {
   for (const GOHauptwerkObject &pipe : r_Odf.GetObjects(WX_PIPE))
     m_WindchestNumberByPipeId[pipe.GetLong(WX_PIPE_ID)]
       = m_WindchestNumberById.count(
-          pipe.GetLong(wxT("WindSupply_OutputWindCompartmentID")))
+          pipe.GetLong(wxT("WindSupply_SourceWindCompartmentID")))
       ? m_WindchestNumberById[pipe.GetLong(
-          wxT("WindSupply_OutputWindCompartmentID"))]
+          wxT("WindSupply_SourceWindCompartmentID"))]
       : 1;
 
   for (const GOHauptwerkObject &ep : r_Odf.GetObjects(WX_ENCLOSURE_PIPE)) {
