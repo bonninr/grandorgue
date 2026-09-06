@@ -60,6 +60,8 @@ static const wxString WX_SWITCH_ID = wxT("SwitchID");
 static const wxString WX_CONTROLLING_SWITCH_ID = wxT("ControllingSwitchID");
 static const wxString WX_SOURCE_SWITCH_ID = wxT("SourceSwitchID");
 static const wxString WX_DEST_SWITCH_ID = wxT("DestSwitchID");
+static const wxString WX_CLOSED_ATTN_DB
+  = wxT("FiltParamWhenClsd_OverallAttnDb");
 static const wxString WX_COMBINATION_ID = wxT("CombinationID");
 static const wxString WX_INSTALLATION_PACKAGE_ID = wxT("InstallationPackageID");
 static const wxString WX_DIVISION_ID = wxT("DivisionID");
@@ -132,7 +134,8 @@ void GOHauptwerkToOdf::FillReadFilter(
     wxT("AmplitudeModDepthAdjustDecibels"),
     wxT("PitchModDepthAdjustPercent")};
   outFilter[WX_ENCLOSURE] = {};
-  outFilter[WX_ENCLOSURE_PIPE] = {WX_PIPE_ID, wxT("EnclosureID")};
+  outFilter[WX_ENCLOSURE_PIPE]
+    = {WX_PIPE_ID, wxT("EnclosureID"), WX_CLOSED_ATTN_DB};
   outFilter[WX_KEY_ACTION] = {};
   outFilter[WX_SWITCH] = {
     WX_SWITCH_ID,
@@ -1772,16 +1775,60 @@ void GOHauptwerkToOdf::BuildTremulants() {
   Set(WX_ORGAN, wxT("NumberOfTremulants"), (long)tremulantN);
 }
 
+unsigned GOHauptwerkToOdf::GetEnclosureMinimumLevel(
+  double totalAttnDb, unsigned nPipes) const {
+  /* Only the overall attenuation converts. Hauptwerk shuts a box with a
+   * filter - so many decibels off everything, and more off the top above a
+   * corner frequency stated per pipe - where a GrandOrgue enclosure is a gain
+   * and nothing else. Taking the flat part alone leaves the box quieter but
+   * not darker, which is the half of it that can be told truthfully; folding
+   * the treble loss into the gain would only make it too quiet.
+   *
+   * Zero is not the neutral choice it looks: it means a shut box is silent,
+   * and no swell box is. Nancy states 8 dB, a box that shuts to about two
+   * fifths of its open loudness. */
+  unsigned level = 0;
+
+  if (nPipes > 0) {
+    const double asPercent = 100.0 * pow(10.0, -(totalAttnDb / nPipes) / 20.0);
+
+    level
+      = asPercent < 0.0 ? 0 : (asPercent > 100.0 ? 100 : (unsigned)asPercent);
+  }
+  return level;
+}
+
 void GOHauptwerkToOdf::BuildEnclosures() {
+  /* How far down a shut box takes the pipes inside it, gathered before the
+   * boxes are written because that is where Hauptwerk states it: not on the
+   * box but on each pipe it encloses. */
+  std::map<long, std::pair<double, unsigned>> attnDbByEnclosureId;
+
+  for (const GOHauptwerkObject &ep : r_Odf.GetObjects(WX_ENCLOSURE_PIPE)) {
+    double attnDb = 0.0;
+
+    if (ep.Get(WX_CLOSED_ATTN_DB).ToCDouble(&attnDb)) {
+      auto &sum = attnDbByEnclosureId[ep.GetLong(wxT("EnclosureID"))];
+
+      sum.first += attnDb;
+      sum.second++;
+    }
+  }
+
   unsigned enclosureN = 0;
 
   for (const GOHauptwerkObject &enclosure : r_Odf.GetObjects(WX_ENCLOSURE)) {
     const wxString group = numbered(wxT("Enclosure"), ++enclosureN);
+    const long enclosureId = enclosure.GetLong(wxT("EnclosureID"));
+    const auto attnIt = attnDbByEnclosureId.find(enclosureId);
+    const unsigned minimumLevel = attnIt != attnDbByEnclosureId.end()
+      ? GetEnclosureMinimumLevel(attnIt->second.first, attnIt->second.second)
+      : 0;
 
-    m_EnclosureNumberById[enclosure.GetLong(wxT("EnclosureID"))] = enclosureN;
+    m_EnclosureNumberById[enclosureId] = enclosureN;
     Set(group, WX_NAME, enclosure.Get(WX_NAME));
     Set(group, wxT("DispLabelText"), enclosure.Get(WX_NAME));
-    Set(group, wxT("AmpMinimumLevel"), 0L);
+    Set(group, wxT("AmpMinimumLevel"), (long)minimumLevel);
     Set(group, wxT("MIDIInputNumber"), (long)enclosureN);
   }
   Set(WX_ORGAN, wxT("NumberOfEnclosures"), (long)enclosureN);

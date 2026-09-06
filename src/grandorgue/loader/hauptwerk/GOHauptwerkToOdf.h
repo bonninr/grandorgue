@@ -171,6 +171,13 @@ private:
    *   percentage GOTremulant reads
    */
   unsigned GetTremulantDepth(double totalAdjustDb, unsigned nPipes) const;
+  /**
+   * @param totalAttnDb how far down a shut box takes each pipe it encloses,
+   *   in decibels, summed over those pipes
+   * @param nPipes how many pipes that sum covers
+   * @return the level a shut box leaves, as the percentage GOEnclosure reads
+   */
+  unsigned GetEnclosureMinimumLevel(double totalAttnDb, unsigned nPipes) const;
   void BuildEnclosures();
   void BuildRank(const GOHauptwerkObject &rank, unsigned rankN);
   /**
