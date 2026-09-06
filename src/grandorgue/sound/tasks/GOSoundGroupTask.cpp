@@ -63,10 +63,10 @@ void GOSoundGroupTask::ProcessList(
     if (windchest) {
       // Only chests that declare a limited supply pay for this, and the
       // stream itself ignores a change too small to hear.
-      const GOWindchest *pWindchest = windchest->GetWindchest();
-
-      if (pWindchest && pWindchest->HasWindModel())
-        sampler->stream.RetuneStream(pWindchest->GetWindPitchFactor());
+      // The wind and the tremulants both pull on the pitch; a chest where
+      // neither does never reaches this at all.
+      if (windchest->IsPitchMoving())
+        sampler->stream.RetuneStream(windchest->GetPitchFactor());
 
       if (r_SamplerPlayer.ProcessSampler(
             output_buffer, sampler, GetNFrames(), windchest->GetVolume()))

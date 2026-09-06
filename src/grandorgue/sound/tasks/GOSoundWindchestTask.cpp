@@ -16,6 +16,8 @@ GOSoundWindchestTask::GOSoundWindchestTask(
   GOSoundOrganEngine &soundEngine, GOWindchest *pWindchest)
   : r_engine(soundEngine),
     m_volume(0),
+    m_pitchFactor(1.0f),
+    m_IsPitchMoving(false),
     m_done(false),
     p_windchest(pWindchest) {}
 
@@ -26,6 +28,14 @@ void GOSoundWindchestTask::Init(
     for (unsigned i = 0; i < p_windchest->GetTremulantCount(); i++)
       m_pTremulantTasks.push_back(
         tremulantTasks[p_windchest->GetTremulantId(i)]);
+
+  /* Whether the pitch can move on this chest at all, decided once: a chest
+   * with a steady wind, whose tremulants only change the loudness, never
+   * reaches the retuning. */
+  m_IsPitchMoving = p_windchest && p_windchest->HasWindModel();
+  for (GOSoundTremulantTask *pTask : m_pTremulantTasks)
+    if (pTask->IsPitchMoving())
+      m_IsPitchMoving = true;
 }
 
 void GOSoundWindchestTask::NewRound() {
@@ -40,6 +50,7 @@ void GOSoundWindchestTask::Run(GOSchedulerThread *pThread) {
 
     if (!m_done.load()) {
       float volume = r_engine.GetGain();
+      float pitchFactor = 1.0f;
 
       if (p_windchest) {
         volume *= p_windchest->GetVolume();
@@ -47,10 +58,15 @@ void GOSoundWindchestTask::Run(GOSchedulerThread *pThread) {
         // tremulants already modulate, and costs nothing on a chest that
         // declares no supply limit.
         volume *= p_windchest->GetWindPressureFactor();
-        for (unsigned i = 0; i < m_pTremulantTasks.size(); i++)
+        pitchFactor = p_windchest->GetWindPitchFactor();
+        for (unsigned i = 0; i < m_pTremulantTasks.size(); i++) {
           volume *= m_pTremulantTasks[i]->GetVolume();
+          // The same signal, applied to the rate instead of the level
+          pitchFactor *= m_pTremulantTasks[i]->GetPitchFactor();
+        }
       }
       m_volume = volume;
+      m_pitchFactor = pitchFactor;
       m_done.store(true);
     }
   }

@@ -123,7 +123,8 @@ void GOHauptwerkToOdf::FillReadFilter(
   outFilter[WX_TREMULANT_WAVEFORM_PIPE] = {
     WX_PIPE_ID,
     wxT("TremulantWaveformID"),
-    wxT("AmplitudeModDepthAdjustDecibels")};
+    wxT("AmplitudeModDepthAdjustDecibels"),
+    wxT("PitchModDepthAdjustPercent")};
   outFilter[WX_ENCLOSURE] = {};
   outFilter[WX_ENCLOSURE_PIPE] = {WX_PIPE_ID, wxT("EnclosureID")};
   outFilter[WX_KEY_ACTION] = {};
@@ -1545,6 +1546,7 @@ void GOHauptwerkToOdf::BuildTremulants() {
    * the tremulant reaches names that waveform along with its own depth. */
   std::unordered_map<long, long> tremulantIdByWaveformId;
   std::unordered_map<long, double> totalDepthDbByTremulantId;
+  std::unordered_map<long, double> totalPitchPctByTremulantId;
   std::unordered_map<long, unsigned> nPipesByTremulantId;
   std::unordered_map<long, std::set<unsigned>> windchestNsByTremulantId;
   unsigned tremulantN = 0;
@@ -1565,6 +1567,8 @@ void GOHauptwerkToOdf::BuildTremulants() {
 
       totalDepthDbByTremulantId[tremulantId]
         += wxAtof(waveformPipe.Get(wxT("AmplitudeModDepthAdjustDecibels")));
+      totalPitchPctByTremulantId[tremulantId]
+        += wxAtof(waveformPipe.Get(wxT("PitchModDepthAdjustPercent")));
       nPipesByTremulantId[tremulantId]++;
       if (windchestIt != m_WindchestNumberByPipeId.end())
         windchestNsByTremulantId[tremulantId].insert(windchestIt->second);
@@ -1587,6 +1591,29 @@ void GOHauptwerkToOdf::BuildTremulants() {
       (long)GetTremulantDepth(
         totalDepthDbByTremulantId[tremulantId],
         nPipesByTremulantId[tremulantId]));
+
+    /* How far the tremulant pulls the pitch, which Hauptwerk states per pipe
+     * as a percentage of the frequency. A tremulant that only changes the
+     * loudness sounds like a volume knob; the waver in pitch is most of what
+     * makes it sound like wind. */
+    const unsigned nTremulantPipes = nPipesByTremulantId[tremulantId];
+
+    if (m_IsTremulantModelEnabled && nTremulantPipes > 0) {
+      const double pitchPercent
+        = totalPitchPctByTremulantId[tremulantId] / nTremulantPipes;
+
+      /* Stated in cents rather than as the percentage Hauptwerk uses:
+       * a percent of the frequency is 17 cents here, so rounding to whole
+       * percent would throw away most of the difference between one pipe's
+       * tremulant and another's. */
+      const double pitchCents = 1200.0 * std::log2(1.0 + pitchPercent / 100.0);
+
+      if (pitchCents >= 1.0)
+        Set(
+          group,
+          wxT("PitchModDepth"),
+          (long)(pitchCents < 1200.0 ? pitchCents : 1200.0));
+    }
     Set(
       group, wxT("StartRate"), tremulant.GetLong(wxT("StartRatePercent"), 30));
     Set(group, wxT("StopRate"), tremulant.GetLong(wxT("StopRatePercent"), 30));

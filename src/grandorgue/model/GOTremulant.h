@@ -32,6 +32,11 @@ private:
   int m_StartRate;
   int m_StopRate;
   int m_AmpModDepth;
+  /* How far the tremulant pulls the pitch, in cents either way. A real
+   * tremulant wavers in pitch as well as in loudness, because both follow the
+   * same wind; zero leaves only the loudness, which is how every organ
+   * written before this was read behaves. */
+  int m_PitchModDepth;
   GOSoundProvider *m_TremProvider;
   GOSoundSampler *m_PlaybackHandle;
   uint64_t m_LastStop;
@@ -52,6 +57,11 @@ private:
   void StartPlayback() override;
 
 public:
+  /** @return the loudness swing, as a percentage of the level */
+  int GetAmpModDepth() const { return m_AmpModDepth; }
+  /** @return the pitch swing, in cents either way */
+  int GetPitchModDepth() const { return m_PitchModDepth; }
+
   GOTremulant(GOOrganModel &organModel);
   ~GOTremulant();
   using GODrawstop::Load; // Avoiding a compilation warning

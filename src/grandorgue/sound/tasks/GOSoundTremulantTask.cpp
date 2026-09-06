@@ -7,6 +7,8 @@
 
 #include "GOSoundTremulantTask.h"
 
+#include <cmath>
+
 #include "sound/playing/GOSoundSamplerPlayer.h"
 #include "threading/GOMutexLocker.h"
 
@@ -14,6 +16,8 @@ GOSoundTremulantTask::GOSoundTremulantTask(
   GOSoundSamplerPlayer &samplerPlayer, unsigned nFramesPerBuffer)
   : r_SamplerPlayer(samplerPlayer),
     m_Volume(0),
+    m_AmpModDepth(0.0f),
+    m_PitchModDepthCents(0.0f),
     m_SamplesPerBuffer(nFramesPerBuffer),
     m_Done(false) {}
 
@@ -24,6 +28,32 @@ void GOSoundTremulantTask::NewRound() {
 
 void GOSoundTremulantTask::Add(GOSoundSampler *sampler) {
   m_Samplers.Put(sampler);
+}
+
+void GOSoundTremulantTask::SetModDepths(
+  unsigned ampModDepth, unsigned pitchModDepthCents) {
+  m_AmpModDepth = ampModDepth / 100.0f;
+  m_PitchModDepthCents = (float)pitchModDepthCents;
+}
+
+float GOSoundTremulantTask::GetPitchFactor() {
+  float factor = 1.0f;
+
+  /* The synthesised tremulant swings the volume between one plus and one
+   * minus its depth, so how far through that swing it is says how far the
+   * pitch should follow. Nothing to do at all when the set gives no pitch
+   * depth, which is the case for every organ written before this was read. */
+  if (m_PitchModDepthCents > 0.0f && m_AmpModDepth > 0.0f) {
+    float swing = (GetVolume() - 1.0f) / m_AmpModDepth;
+
+    if (swing > 1.0f)
+      swing = 1.0f;
+    else if (swing < -1.0f)
+      swing = -1.0f;
+    // Once per block per tremulant, not once per sample
+    factor = powf(2.0f, m_PitchModDepthCents * swing / 1200.0f);
+  }
+  return factor;
 }
 
 void GOSoundTremulantTask::Run(GOSchedulerThread *pThread) {

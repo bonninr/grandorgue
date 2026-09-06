@@ -22,6 +22,10 @@ private:
   GOSoundSamplerList m_Samplers;
   GOMutex m_Mutex;
   float m_Volume;
+  // A fraction of the level, ready to multiply
+  float m_AmpModDepth;
+  // Cents either way, turned into a rate multiplier when it is applied
+  float m_PitchModDepthCents;
   unsigned m_SamplesPerBuffer;
   bool m_Done;
 
@@ -44,6 +48,24 @@ public:
       Run();
     return m_Volume;
   }
+
+  /**
+   * States how far this tremulant swings, so the pitch can follow the
+   * loudness.
+   *
+   * @param ampModDepth the loudness swing, as a percentage of the level
+   * @param pitchModDepthCents the pitch swing, in cents either way
+   */
+  void SetModDepths(unsigned ampModDepth, unsigned pitchModDepthCents);
+
+  /**
+   * @return what to multiply a pipe's playback rate by this block, or 1 when
+   *   the tremulant does not move the pitch
+   */
+  float GetPitchFactor();
+
+  /** @return whether this tremulant moves the pitch at all */
+  bool IsPitchMoving() const { return m_PitchModDepthCents > 0.0f; }
 };
 
 #endif

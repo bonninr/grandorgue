@@ -69,6 +69,8 @@ void GOTremulant::Load(
     m_StopRate = cfg.ReadInteger(ODFSetting, group, wxT("StopRate"), 1, 100);
     m_AmpModDepth
       = cfg.ReadInteger(ODFSetting, group, wxT("AmpModDepth"), 1, 100);
+    m_PitchModDepth = cfg.ReadInteger(
+      ODFSetting, group, wxT("PitchModDepth"), 0, 1200, false, 0);
     m_TremulantN = tremulantN;
     m_PlaybackHandle = 0;
   }

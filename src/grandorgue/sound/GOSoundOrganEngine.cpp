@@ -12,6 +12,7 @@
 #include "buffer/GOSoundBufferMutable.h"
 #include "config/GOConfig.h"
 #include "model/GOOrganModel.h"
+#include "model/GOTremulant.h"
 #include "model/GOWindchest.h"
 #include "scheduler/GOSchedulerThread.h"
 #include "tasks/GOSoundGroupTask.h"
@@ -257,9 +258,18 @@ void GOSoundOrganEngine::BuildEngine(
 
   // [B7] Build tremulant tasks
   for (unsigned n = r_OrganModel.GetTremulantCount(), tremI = 0; tremI < n;
-       tremI++)
-    mp_TremulantTasks.push_back(
-      new GOSoundTremulantTask(m_SamplerPlayer, m_NSamplesPerBuffer));
+       tremI++) {
+    GOSoundTremulantTask *pTask
+      = new GOSoundTremulantTask(m_SamplerPlayer, m_NSamplesPerBuffer);
+    const GOTremulant *pTremulant = r_OrganModel.GetTremulant(tremI);
+
+    // Before the windchest tasks are built: they decide from this whether
+    // they will ever need to retune anything.
+    if (pTremulant)
+      pTask->SetModDepths(
+        pTremulant->GetAmpModDepth(), pTremulant->GetPitchModDepth());
+    mp_TremulantTasks.push_back(pTask);
+  }
 
   // [B8] Build windchest tasks
   // Special windchest task for detached releases (index 0 =

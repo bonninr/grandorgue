@@ -26,6 +26,10 @@ private:
   GOSoundOrganEngine &r_engine;
   GOMutex m_mutex;
   float m_volume;
+  // What the wind and the tremulants together do to the pitch
+  float m_pitchFactor;
+  // Whether anything moves it at all, so a still chest pays nothing
+  bool m_IsPitchMoving;
   std::atomic_bool m_done;
   GOWindchest *p_windchest;
   std::vector<GOSoundTremulantTask *> m_pTremulantTasks;
@@ -45,6 +49,16 @@ public:
   void Init(ptr_vector<GOSoundTremulantTask> &tremulantTasks);
 
   /** @return the chest this task belongs to, or nullptr for the special one. */
+  bool IsPitchMoving() const { return m_IsPitchMoving; }
+
+  /**
+   * @return what to multiply a pipe's playback rate by this block
+   */
+  float GetPitchFactor() {
+    Run();
+    return m_pitchFactor;
+  }
+
   const GOWindchest *GetWindchest() const { return p_windchest; }
 
   float GetWindchestVolume() const {

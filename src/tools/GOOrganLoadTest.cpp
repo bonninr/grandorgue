@@ -27,6 +27,7 @@
 #include "model/GOManual.h"
 #include "model/GORank.h"
 #include "model/GOSwitch.h"
+#include "model/GOTremulant.h"
 
 #include "gui/panels/GOGUIPanel.h"
 #include "model/GOWindchest.h"
@@ -173,6 +174,16 @@ public:
         }
         std::cout << "  wind-limited chests: " << nWindLimited << "\n";
         std::cout << "  tremulant chests: " << nTremulantChests << "\n";
+
+        for (unsigned n = controller.GetTremulantCount(), tremI = 0; tremI < n;
+             tremI++) {
+          const GOTremulant *pTremulant = controller.GetTremulant(tremI);
+
+          if (pTremulant)
+            std::cout << "  tremulant " << tremI << " : amp depth "
+                      << pTremulant->GetAmpModDepth() << "%, pitch depth "
+                      << pTremulant->GetPitchModDepth() << " cents\n";
+        }
 
         unsigned nDrawnSwitches = 0;
         unsigned nDerivedSwitches = 0;
