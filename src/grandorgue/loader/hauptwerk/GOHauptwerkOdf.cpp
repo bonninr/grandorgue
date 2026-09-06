@@ -144,9 +144,9 @@ bool GOHauptwerkOdf::IsWanted(
  */
 void GOHauptwerkOdf::ParseBuffer(const wxString &buffer) {
   const size_t bufferLen = buffer.Length();
-  wxString objectType;   // the ObjectType of the enclosing ObjectList
-  wxString attribute;    // element name one level below the object
-  wxString text;         // character data collected for `attribute`
+  wxString objectType; // the ObjectType of the enclosing ObjectList
+  wxString attribute;  // element name one level below the object
+  wxString text;       // character data collected for `attribute`
   GOHauptwerkObject object;
   bool isInObject = false;
   bool hasObject = false;
@@ -172,74 +172,74 @@ void GOHauptwerkOdf::ParseBuffer(const wxString &buffer) {
 
     // Skip declarations and comments; everything else is structure.
     if (!tag.IsEmpty() && tag[0] != wxT('?') && tag[0] != wxT('!')) {
-    const bool isClosing = tag[0] == wxT('/');
-    const bool isSelfClosing = tag.Last() == wxT('/');
-    // "Name" out of "<Name>", "</Name>" or "<Name/>"
-    wxString name = tag;
+      const bool isClosing = tag[0] == wxT('/');
+      const bool isSelfClosing = tag.Last() == wxT('/');
+      // "Name" out of "<Name>", "</Name>" or "<Name/>"
+      wxString name = tag;
 
-    if (isClosing)
-      name = name.Mid(1);
-    else if (isSelfClosing)
-      name = name.Left(name.Length() - 1);
+      if (isClosing)
+        name = name.Mid(1);
+      else if (isSelfClosing)
+        name = name.Left(name.Length() - 1);
 
-    const size_t spaceI = name.find_first_of(wxT(" \t\r\n"));
-    const wxString element
-      = spaceI == wxString::npos ? name : name.Left(spaceI);
+      const size_t spaceI = name.find_first_of(wxT(" \t\r\n"));
+      const wxString element
+        = spaceI == wxString::npos ? name : name.Left(spaceI);
 
-    if (element == WX_ROOT_TAG) {
-      if (!isClosing) {
-        const int verI = tag.Find(wxT("FileFormatVersion=\""));
-
-        if (verI != wxNOT_FOUND) {
-          const size_t valueI = verI + 19;
-
-          m_FileFormatVersion
-            = tag.Mid(valueI, tag.find(wxT('"'), valueI) - valueI);
-        }
-      }
-    } else if (element == WX_OBJECT_LIST_TAG) {
-      objectType.Clear();
-      if (!isClosing) {
-        const int typeI = tag.Find(WX_OBJECT_TYPE_ATTR + wxT("=\""));
-
-        if (typeI != wxNOT_FOUND) {
-          const size_t valueI = typeI + WX_OBJECT_TYPE_ATTR.Length() + 2;
-
-          objectType = tag.Mid(valueI, tag.find(wxT('"'), valueI) - valueI);
-        }
-      }
-    } else if (!objectType.IsEmpty()) {
-      if (!isInObject) {
-        // An element directly inside ObjectList opens an object. In the
-        // compressed spelling it is <o> rather than the type name.
+      if (element == WX_ROOT_TAG) {
         if (!isClosing) {
-          if (element == wxT("o") || element == wxT("O"))
-            m_IsCompressedFormat = true;
-          isInObject = true;
-          hasObject = IsWanted(objectType);
-          object = GOHauptwerkObject();
-          attribute.Clear();
-          if (isSelfClosing)
-            isInObject = false;
+          const int verI = tag.Find(wxT("FileFormatVersion=\""));
+
+          if (verI != wxNOT_FOUND) {
+            const size_t valueI = verI + 19;
+
+            m_FileFormatVersion
+              = tag.Mid(valueI, tag.find(wxT('"'), valueI) - valueI);
+          }
         }
-      } else if (attribute.IsEmpty()) {
-        if (isClosing) {
-          // closes the object itself
-          if (hasObject)
-            m_ObjectsByType[objectType].push_back(object);
-          isInObject = false;
-        } else if (!isSelfClosing) {
-          attribute = element;
+      } else if (element == WX_OBJECT_LIST_TAG) {
+        objectType.Clear();
+        if (!isClosing) {
+          const int typeI = tag.Find(WX_OBJECT_TYPE_ATTR + wxT("=\""));
+
+          if (typeI != wxNOT_FOUND) {
+            const size_t valueI = typeI + WX_OBJECT_TYPE_ATTR.Length() + 2;
+
+            objectType = tag.Mid(valueI, tag.find(wxT('"'), valueI) - valueI);
+          }
+        }
+      } else if (!objectType.IsEmpty()) {
+        if (!isInObject) {
+          // An element directly inside ObjectList opens an object. In the
+          // compressed spelling it is <o> rather than the type name.
+          if (!isClosing) {
+            if (element == wxT("o") || element == wxT("O"))
+              m_IsCompressedFormat = true;
+            isInObject = true;
+            hasObject = IsWanted(objectType);
+            object = GOHauptwerkObject();
+            attribute.Clear();
+            if (isSelfClosing)
+              isInObject = false;
+          }
+        } else if (attribute.IsEmpty()) {
+          if (isClosing) {
+            // closes the object itself
+            if (hasObject)
+              m_ObjectsByType[objectType].push_back(object);
+            isInObject = false;
+          } else if (!isSelfClosing) {
+            attribute = element;
+            text.Clear();
+          }
+          // a self-closing attribute is an empty value: nothing to record
+        } else if (isClosing && element == attribute) {
+          if (hasObject && IsWanted(objectType, attribute))
+            object.Set(attribute, decodeEntities(text));
+          attribute.Clear();
           text.Clear();
         }
-        // a self-closing attribute is an empty value: nothing to record
-      } else if (isClosing && element == attribute) {
-        if (hasObject && IsWanted(objectType, attribute))
-          object.Set(attribute, decodeEntities(text));
-        attribute.Clear();
-        text.Clear();
       }
-    }
     }
   }
 }
