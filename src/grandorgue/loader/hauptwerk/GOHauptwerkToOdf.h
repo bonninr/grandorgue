@@ -11,8 +11,8 @@
 #include <wx/string.h>
 
 #include <map>
+#include <set>
 #include <unordered_map>
-#include <unordered_set>
 #include <vector>
 
 class GOHauptwerkObject;
@@ -99,8 +99,7 @@ public:
   const std::vector<wxString> &GetWarnings() const { return m_Warnings; }
 
   /** The attribute filter GOHauptwerkOdf needs for this converter to work. */
-  static void FillReadFilter(
-    std::unordered_map<wxString, std::unordered_set<wxString>> &outFilter);
+  static void FillReadFilter(std::map<wxString, std::set<wxString>> &outFilter);
 };
 
 #endif /* GOHAUPTWERKTOODF_H */

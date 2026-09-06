@@ -11,8 +11,8 @@
 #include <wx/string.h>
 
 #include <map>
+#include <set>
 #include <unordered_map>
-#include <unordered_set>
 #include <vector>
 
 class GOOpenedFile;
@@ -72,9 +72,15 @@ public:
  */
 class GOHauptwerkOdf {
 public:
-  /** Which attributes to retain for one object type. */
-  using GOAttributeFilter
-    = std::unordered_map<wxString, std::unordered_set<wxString>>;
+  /**
+   * Which attributes to retain for one object type.
+   *
+   * Ordered rather than hashed containers throughout this class: wxWidgets
+   * only specialises std::hash<wxString> from 3.1, and GrandOrgue still
+   * supports building against 3.0, where an unordered container keyed by
+   * wxString does not compile.
+   */
+  using GOAttributeFilter = std::map<wxString, std::set<wxString>>;
 
 private:
   wxString m_FileFormatVersion;
@@ -83,15 +89,14 @@ private:
   GOAttributeFilter m_Filter;
 
   // objects by type, in file order
-  std::unordered_map<wxString, std::vector<GOHauptwerkObject>> m_ObjectsByType;
+  std::map<wxString, std::vector<GOHauptwerkObject>> m_ObjectsByType;
 
   // (type + "\n" + idAttribute) -> id -> index into m_ObjectsByType[type].
   // Built on first lookup rather than while parsing: the attribute holding
   // the id is named per type (RankID, StopID, PipeID, ...) with no rule that
   // derives it from the type name, so the reader would otherwise have to be
   // told all of them up front just in case.
-  mutable std::unordered_map<wxString, std::unordered_map<long, unsigned>>
-    m_IndexById;
+  mutable std::map<wxString, std::unordered_map<long, unsigned>> m_IndexById;
 
   bool IsWanted(const wxString &objectType) const;
   bool IsWanted(const wxString &objectType, const wxString &attribute) const;

@@ -49,7 +49,7 @@ static wxString numbered(const wxString &prefix, unsigned n) {
 }
 
 void GOHauptwerkToOdf::FillReadFilter(
-  std::unordered_map<wxString, std::unordered_set<wxString>> &outFilter) {
+  std::map<wxString, std::set<wxString>> &outFilter) {
   // An empty set keeps every attribute of that type. The bulk types are
   // listed explicitly: Sample alone runs to 60,000 objects, and holding only
   // the three fields that matter keeps the read affordable on a small machine.
