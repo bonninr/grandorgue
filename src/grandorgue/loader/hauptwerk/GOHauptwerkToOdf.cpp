@@ -446,6 +446,10 @@ void GOHauptwerkToOdf::BuildStops() {
       // Without this the drawstop is not drawn at all and there is no way to
       // engage the stop: GrandOrgue defaults Displayed to N.
       Set(group, wxT("Displayed"), WX_ODF_YES);
+      // GODrawstop reads this as a required value for a plain drawstop - one
+      // with no Function - so it must be present even though N is what a stop
+      // starts as anyway.
+      Set(group, wxT("DefaultToEngaged"), WX_ODF_NO);
       PlaceDrawstop(group, stopN - 1);
 
       for (const GOHauptwerkObject *pStopRank : ranksIt->second) {
@@ -535,6 +539,7 @@ void GOHauptwerkToOdf::BuildCouplers() {
       Set(
         group, wxT("CoupleToSubsequentDownwardIntramanualCouplers"), WX_ODF_NO);
       Set(group, wxT("Displayed"), WX_ODF_YES);
+      Set(group, wxT("DefaultToEngaged"), WX_ODF_NO);
 
       const unsigned srcManualN = srcIt->second;
       const unsigned manualCouplerN = ++couplerCountByManual[srcManualN];
@@ -570,6 +575,7 @@ void GOHauptwerkToOdf::BuildTremulants() {
       tremulant.GetLong(wxT("StartRatePercent"), 30));
     Set(group, wxT("StopRate"), tremulant.GetLong(wxT("StopRatePercent"), 30));
     Set(group, wxT("Displayed"), WX_ODF_YES);
+    Set(group, wxT("DefaultToEngaged"), WX_ODF_NO);
     // Which windchests it acts on is not stated directly; a tremulant belongs
     // to a division, so it is attached to every windchest the organ has.
     for (const auto &pair : m_WindchestNumberById)
