@@ -29,6 +29,8 @@ static const wxString WX_SAMPLE = wxT("Sample");
 static const wxString WX_WIND_COMPARTMENT = wxT("WindCompartment");
 static const wxString WX_TREMULANT = wxT("Tremulant");
 static const wxString WX_ENCLOSURE = wxT("Enclosure");
+static const wxString WX_ENCLOSURE_PIPE = wxT("EnclosurePipe");
+static const wxString WX_KEY_ACTION = wxT("KeyAction");
 
 // Hauptwerk attribute names used in more than one place
 static const wxString WX_NAME = wxT("Name");
@@ -66,6 +68,8 @@ void GOHauptwerkToOdf::FillReadFilter(
   outFilter[WX_WIND_COMPARTMENT] = {};
   outFilter[WX_TREMULANT] = {};
   outFilter[WX_ENCLOSURE] = {};
+  outFilter[WX_ENCLOSURE_PIPE] = {WX_PIPE_ID, wxT("EnclosureID")};
+  outFilter[WX_KEY_ACTION] = {};
   outFilter[WX_PIPE] = {
     WX_PIPE_ID,
     WX_RANK_ID,
@@ -261,8 +265,6 @@ void GOHauptwerkToOdf::BuildManuals() {
   }
   Set(WX_ORGAN, wxT("NumberOfManuals"), (long)manualN);
   Set(WX_ORGAN, wxT("HasPedals"), hasPedals ? WX_ODF_YES : WX_ODF_NO);
-  Set(WX_ORGAN, wxT("NumberOfEnclosures"), 0L);
-  Set(WX_ORGAN, wxT("NumberOfTremulants"), 0L);
   Set(WX_ORGAN, wxT("NumberOfSwitches"), 0L);
   Set(WX_ORGAN, wxT("NumberOfPanels"), 0L);
 }
@@ -486,6 +488,155 @@ void GOHauptwerkToOdf::BuildStops() {
   Set(WX_ORGAN, wxT("NumberOfStops"), (long)stopN);
 }
 
+
+void GOHauptwerkToOdf::BuildCouplers() {
+  // Hauptwerk states a key action between keyboards; GrandOrgue states a
+  // coupler on the source manual naming the destination one. Keyboards carry
+  // only a hint of which division they play, which is the only link between
+  // the two numberings.
+  for (const GOHauptwerkObject &keyboard : r_Odf.GetObjects(WX_KEYBOARD)) {
+    const auto manualIt = m_ManualNumberByDivisionId.find(
+      keyboard.GetLong(wxT("Hint_PrimaryAssociatedDivisionID")));
+
+    if (manualIt != m_ManualNumberByDivisionId.end())
+      m_ManualNumberByKeyboardId[keyboard.GetLong(wxT("KeyboardID"))]
+        = manualIt->second;
+  }
+
+  std::unordered_map<unsigned, unsigned> couplerCountByManual;
+  unsigned couplerN = 0;
+
+  for (const GOHauptwerkObject &action : r_Odf.GetObjects(WX_KEY_ACTION)) {
+    const auto srcIt = m_ManualNumberByKeyboardId.find(
+      action.GetLong(wxT("SourceKeyboardID")));
+    const auto dstIt
+      = m_ManualNumberByKeyboardId.find(action.GetLong(wxT("DestKeyboardID")));
+
+    // A key action to or from a keyboard with no division of its own - the
+    // extra "GrandOrgue Ex" style keyboards sets add - has nothing to couple.
+    if (
+      srcIt != m_ManualNumberByKeyboardId.end()
+      && dstIt != m_ManualNumberByKeyboardId.end()
+      && srcIt->second != dstIt->second) {
+      const wxString group = numbered(wxT("Coupler"), ++couplerN);
+
+      Set(group, WX_NAME, action.Get(WX_NAME));
+      Set(group, wxT("UnisonOff"), WX_ODF_NO);
+      Set(group, wxT("DestinationManual"), (long)dstIt->second);
+      Set(
+        group,
+        wxT("DestinationKeyshift"),
+        action.GetLong(wxT("MIDINoteNumberIncrement"), 0));
+      Set(group, wxT("CoupleToSubsequentUnisonIntermanualCouplers"), WX_ODF_NO);
+      Set(group, wxT("CoupleToSubsequentUpwardIntermanualCouplers"), WX_ODF_NO);
+      Set(
+        group, wxT("CoupleToSubsequentDownwardIntermanualCouplers"), WX_ODF_NO);
+      Set(group, wxT("CoupleToSubsequentUpwardIntramanualCouplers"), WX_ODF_NO);
+      Set(
+        group, wxT("CoupleToSubsequentDownwardIntramanualCouplers"), WX_ODF_NO);
+      Set(group, wxT("Displayed"), WX_ODF_YES);
+
+      const unsigned srcManualN = srcIt->second;
+      const unsigned manualCouplerN = ++couplerCountByManual[srcManualN];
+      const wxString manualGroup = numbered(wxT("Manual"), srcManualN);
+
+      Set(
+        manualGroup,
+        wxString::Format(wxT("Coupler%03u"), manualCouplerN),
+        (long)couplerN);
+      Set(manualGroup, wxT("NumberOfCouplers"), (long)manualCouplerN);
+    }
+  }
+}
+
+void GOHauptwerkToOdf::BuildTremulants() {
+  unsigned tremulantN = 0;
+
+  for (const GOHauptwerkObject &tremulant : r_Odf.GetObjects(WX_TREMULANT)) {
+    const wxString group = numbered(wxT("Tremulant"), ++tremulantN);
+    const double freqHz = wxAtof(tremulant.Get(wxT("FrequencyWhenEngagedHz")));
+    // Hauptwerk gives a frequency, GrandOrgue a period in milliseconds.
+    const long periodMs = freqHz > 0.1 ? (long)(1000.0 / freqHz) : 200L;
+
+    m_TremulantNumberById[tremulant.GetLong(wxT("TremulantID"))] = tremulantN;
+    Set(group, WX_NAME, tremulant.Get(WX_NAME));
+    Set(group, wxT("Period"), periodMs);
+    // Hauptwerk carries the depth in the sampled waveform rather than as a
+    // number, so this is GrandOrgue's synthesised approximation of it.
+    Set(group, wxT("AmpModDepth"), 10L);
+    Set(
+      group,
+      wxT("StartRate"),
+      tremulant.GetLong(wxT("StartRatePercent"), 30));
+    Set(group, wxT("StopRate"), tremulant.GetLong(wxT("StopRatePercent"), 30));
+    Set(group, wxT("Displayed"), WX_ODF_YES);
+    // Which windchests it acts on is not stated directly; a tremulant belongs
+    // to a division, so it is attached to every windchest the organ has.
+    for (const auto &pair : m_WindchestNumberById)
+      m_WindchestsByTremulantN[tremulantN].insert(pair.second);
+  }
+  Set(WX_ORGAN, wxT("NumberOfTremulants"), (long)tremulantN);
+}
+
+void GOHauptwerkToOdf::BuildEnclosures() {
+  unsigned enclosureN = 0;
+
+  for (const GOHauptwerkObject &enclosure : r_Odf.GetObjects(WX_ENCLOSURE)) {
+    const wxString group = numbered(wxT("Enclosure"), ++enclosureN);
+
+    m_EnclosureNumberById[enclosure.GetLong(wxT("EnclosureID"))] = enclosureN;
+    Set(group, WX_NAME, enclosure.Get(WX_NAME));
+    Set(group, wxT("DispLabelText"), enclosure.Get(WX_NAME));
+    Set(group, wxT("AmpMinimumLevel"), 0L);
+    Set(group, wxT("MIDIInputNumber"), (long)enclosureN);
+  }
+  Set(WX_ORGAN, wxT("NumberOfEnclosures"), (long)enclosureN);
+
+  // EnclosurePipe says which pipes a box encloses. GrandOrgue encloses whole
+  // windchests, so a box takes in every windchest any of its pipes sits on.
+  for (const GOHauptwerkObject &pipe : r_Odf.GetObjects(WX_PIPE))
+    m_WindchestNumberByPipeId[pipe.GetLong(WX_PIPE_ID)]
+      = m_WindchestNumberById.count(
+          pipe.GetLong(wxT("WindSupply_OutputWindCompartmentID")))
+      ? m_WindchestNumberById[pipe.GetLong(
+          wxT("WindSupply_OutputWindCompartmentID"))]
+      : 1;
+
+  for (const GOHauptwerkObject &ep : r_Odf.GetObjects(WX_ENCLOSURE_PIPE)) {
+    const auto encIt = m_EnclosureNumberById.find(ep.GetLong(wxT("EnclosureID")));
+    const auto wcIt = m_WindchestNumberByPipeId.find(ep.GetLong(WX_PIPE_ID));
+
+    if (
+      encIt != m_EnclosureNumberById.end()
+      && wcIt != m_WindchestNumberByPipeId.end())
+      m_WindchestsByEnclosureN[encIt->second].insert(wcIt->second);
+  }
+
+  // Now that both are known, write the references onto the windchests.
+  for (const auto &pair : m_WindchestNumberById) {
+    const unsigned windchestN = pair.second;
+    const wxString group = numbered(wxT("WindchestGroup"), windchestN);
+    unsigned refN = 0;
+
+    for (const auto &enc : m_WindchestsByEnclosureN)
+      if (enc.second.count(windchestN))
+        Set(
+          group,
+          wxString::Format(wxT("Enclosure%03u"), ++refN),
+          (long)enc.first);
+    Set(group, wxT("NumberOfEnclosures"), (long)refN);
+
+    refN = 0;
+    for (const auto &trem : m_WindchestsByTremulantN)
+      if (trem.second.count(windchestN))
+        Set(
+          group,
+          wxString::Format(wxT("Tremulant%03u"), ++refN),
+          (long)trem.first);
+    Set(group, wxT("NumberOfTremulants"), (long)refN);
+  }
+}
+
 void GOHauptwerkToOdf::BuildDefaultConsole(unsigned nStops, unsigned nManuals) {
   // GrandOrgue draws its own console whatever NumberOfPanels says, but it
   // lays it out from these settings, and their defaults assume a small organ.
@@ -551,4 +702,7 @@ void GOHauptwerkToOdf::Build() {
   BuildDefaultConsole(
     r_Odf.GetObjectCount(WX_STOP), r_Odf.GetObjectCount(WX_DIVISION));
   BuildStops();
+  BuildCouplers();
+  BuildTremulants();
+  BuildEnclosures();
 }

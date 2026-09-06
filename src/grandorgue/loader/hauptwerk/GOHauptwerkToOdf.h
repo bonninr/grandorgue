@@ -57,6 +57,13 @@ private:
   std::unordered_map<long, unsigned> m_RankNumberById;
   std::unordered_map<long, unsigned> m_TremulantNumberById;
   std::unordered_map<long, unsigned> m_EnclosureNumberById;
+  // Hauptwerk hangs key actions off keyboards but stops off divisions, and
+  // the two are related only by a hint on the keyboard.
+  std::unordered_map<long, unsigned> m_ManualNumberByKeyboardId;
+  // Windchests reached by an enclosure or a tremulant, by its ODF number.
+  std::map<unsigned, std::set<unsigned>> m_WindchestsByEnclosureN;
+  std::map<unsigned, std::set<unsigned>> m_WindchestsByTremulantN;
+  std::unordered_map<long, unsigned> m_WindchestNumberByPipeId;
 
   // Layers, attacks and releases keyed by the object they hang off, so the
   // rank builder does not rescan tens of thousands of objects per pipe.
@@ -79,6 +86,9 @@ private:
   void BuildManuals();
   void BuildRanks();
   void BuildStops();
+  void BuildCouplers();
+  void BuildTremulants();
+  void BuildEnclosures();
   void BuildRank(const GOHauptwerkObject &rank, unsigned rankN);
   /**
    * Size GrandOrgue's own console. It is drawn whatever NumberOfPanels says,
