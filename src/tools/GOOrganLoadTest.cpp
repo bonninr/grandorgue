@@ -58,6 +58,7 @@ public:
     bool isWindModel = false;
     bool isNoVoicing = false;
     bool isNoSwitches = false;
+    bool isNoTremulantModel = false;
 
     for (int i = 1; i < argc; i++) {
       const wxString arg = argv[i];
@@ -70,6 +71,8 @@ public:
         isNoVoicing = true;
       else if (arg == wxT("--no-switches"))
         isNoSwitches = true;
+      else if (arg == wxT("--no-tremulant-model"))
+        isNoTremulantModel = true;
       else if (!arg.StartsWith(wxT("-")))
         organPath = arg;
     }
@@ -98,6 +101,7 @@ public:
       config.HauptwerkWindModel(isWindModel);
       config.HauptwerkVoicing(!isNoVoicing);
       config.HauptwerkSwitches(!isNoSwitches);
+      config.HauptwerkTremulantModel(!isNoTremulantModel);
 
       // True, not false: the panels are built during Load and reach for the
       // image cache, which only exists when the controller is told the

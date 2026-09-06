@@ -307,8 +307,8 @@ GOConfig::GOConfig(
     LoopLoad(this, GENERAL, wxT("LoopLoad"), 0, 2, 2),
     ReleaseLoad(this, GENERAL, wxT("ReleaseLoad"), 0, 1, 1),
     HauptwerkVoicing(this, GENERAL, wxT("HauptwerkVoicing"), true),
-    HauptwerkSampledTremulants(
-      this, GENERAL, wxT("HauptwerkSampledTremulants"), true),
+    HauptwerkTremulantModel(
+      this, GENERAL, wxT("HauptwerkTremulantModel"), true),
     // Off by default: it is the only one of the three with a per-block cost.
     HauptwerkWindModel(this, GENERAL, wxT("HauptwerkWindModel"), false),
     HauptwerkSwitches(this, GENERAL, wxT("HauptwerkSwitches"), true),

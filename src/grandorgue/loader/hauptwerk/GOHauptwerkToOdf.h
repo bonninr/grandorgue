@@ -51,6 +51,9 @@ private:
   /* Whether to build the console from Hauptwerk's switch graph rather than
    * drawing the stops directly. Load time only, but it changes the console. */
   bool m_IsSwitchesEnabled;
+  /* Whether to take the tremulant's shaping from the sample set rather than
+   * leaving GrandOrgue's default. Load time only. */
+  bool m_IsTremulantModelEnabled;
   // Folder holding OrganDefinitions and OrganInstallationPackages
   wxString m_SampleSetPath;
   GOOdfEntries m_Entries;
@@ -145,6 +148,11 @@ private:
   void BuildStops();
   void BuildCouplers();
   void BuildTremulants();
+  /**
+   * @return the amplitude modulation depth to give the tremulant, as the
+   *   percentage GOTremulant reads
+   */
+  unsigned GetTremulantDepth() const;
   void BuildEnclosures();
   void BuildRank(const GOHauptwerkObject &rank, unsigned rankN);
   /**
@@ -182,7 +190,8 @@ public:
     const wxString &sampleSetPath,
     bool isVoicingEnabled = true,
     bool isWindModelEnabled = false,
-    bool isSwitchesEnabled = true);
+    bool isSwitchesEnabled = true,
+    bool isTremulantModelEnabled = true);
 
   /** Runs the conversion. Safe to call once per instance. */
   void Build();

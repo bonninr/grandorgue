@@ -103,7 +103,8 @@ GOOrganReader::GOOrganReader(
       sampleSetPath,
       config.HauptwerkVoicing(),
       config.HauptwerkWindModel(),
-      config.HauptwerkSwitches());
+      config.HauptwerkSwitches(),
+      config.HauptwerkTremulantModel());
 
     converter.Build();
     for (const wxString &warning : converter.GetWarnings())

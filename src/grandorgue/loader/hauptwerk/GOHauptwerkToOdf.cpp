@@ -62,6 +62,8 @@ static const unsigned MAX_ODF_SWITCHES = 999;
 static const long HW_COMBINATION_CRESCENDO = 4;
 // Positions of GOSetter's crescendo pedal (CRESCENDO_STEPS there)
 static const unsigned N_CRESCENDO_STEPS = 32;
+// Where GrandOrgue's synthesised tremulant sits when nothing says otherwise
+static const unsigned DEFAULT_TREMULANT_DEPTH = 10;
 
 static const wxString WX_ORGAN = wxT("Organ");
 static const wxString WX_ODF_YES = wxT("Y");
@@ -115,7 +117,8 @@ void GOHauptwerkToOdf::FillReadFilter(
     WX_LAYER_ID,
     WX_PIPE_ID,
     wxT("AmpLvl_LevelAdjustDecibels"),
-    wxT("PitchLvl_DetuningPercentSemitones")};
+    wxT("PitchLvl_DetuningPercentSemitones"),
+    wxT("AmpLvl_TremulantModDepthAdjustDecibels")};
   outFilter[WX_ATTACK] = {WX_LAYER_ID, WX_SAMPLE_ID};
   outFilter[WX_RELEASE] = {
     WX_LAYER_ID,
@@ -130,11 +133,13 @@ GOHauptwerkToOdf::GOHauptwerkToOdf(
   const wxString &sampleSetPath,
   bool isVoicingEnabled,
   bool isWindModelEnabled,
-  bool isSwitchesEnabled)
+  bool isSwitchesEnabled,
+  bool isTremulantModelEnabled)
   : r_Odf(odf),
     m_IsVoicingEnabled(isVoicingEnabled),
     m_IsWindModelEnabled(isWindModelEnabled),
     m_IsSwitchesEnabled(isSwitchesEnabled),
+    m_IsTremulantModelEnabled(isTremulantModelEnabled),
     m_SampleSetPath(sampleSetPath),
     m_DrawstopCols(12),
     m_DrawstopRows(12),
@@ -1093,6 +1098,33 @@ void GOHauptwerkToOdf::BuildCouplers() {
   }
 }
 
+unsigned GOHauptwerkToOdf::GetTremulantDepth() const {
+  /* Hauptwerk does not state a tremulant depth as such. It states, per pipe,
+   * how far that pipe's depth departs from the depth its own engine applies,
+   * which is a number this converter does not have, so the departure is
+   * applied to GrandOrgue's own modest default instead. A set that says
+   * nothing - every pipe at 0 dB, as this one does - keeps that default. */
+  double totalAdjustDb = 0.0;
+  unsigned nLayers = 0;
+  unsigned depth = DEFAULT_TREMULANT_DEPTH;
+
+  if (m_IsTremulantModelEnabled) {
+    for (const GOHauptwerkObject &layer : r_Odf.GetObjects(WX_LAYER)) {
+      totalAdjustDb
+        += wxAtof(layer.Get(wxT("AmpLvl_TremulantModDepthAdjustDecibels")));
+      nLayers++;
+    }
+    if (nLayers > 0 && totalAdjustDb != 0.0) {
+      const double adjusted = DEFAULT_TREMULANT_DEPTH
+        * pow(10.0, totalAdjustDb / nLayers / 20.0);
+
+      // GOTremulant reads AmpModDepth as a percentage between 1 and 100
+      depth = adjusted < 1.0 ? 1 : (adjusted > 100.0 ? 100 : (unsigned)adjusted);
+    }
+  }
+  return depth;
+}
+
 void GOHauptwerkToOdf::BuildTremulants() {
   unsigned tremulantN = 0;
 
@@ -1105,9 +1137,7 @@ void GOHauptwerkToOdf::BuildTremulants() {
     m_TremulantNumberById[tremulant.GetLong(wxT("TremulantID"))] = tremulantN;
     Set(group, WX_NAME, tremulant.Get(WX_NAME));
     Set(group, wxT("Period"), periodMs);
-    // Hauptwerk carries the depth in the sampled waveform rather than as a
-    // number, so this is GrandOrgue's synthesised approximation of it.
-    Set(group, wxT("AmpModDepth"), 10L);
+    Set(group, wxT("AmpModDepth"), (long)GetTremulantDepth());
     Set(
       group,
       wxT("StartRate"),
