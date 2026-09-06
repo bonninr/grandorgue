@@ -397,8 +397,18 @@ void GOHauptwerkToOdf::BuildRanks() {
   unsigned rankN = 0;
 
   for (const GOHauptwerkObject &rank : ranks) {
-    m_RankNumberById[rank.GetLong(WX_RANK_ID)] = ++rankN;
-    BuildRank(rank, rankN);
+    const long rankId = rank.GetLong(WX_RANK_ID);
+    const auto pipesIt = m_PipesByRankId.find(rankId);
+
+    // A sample set declares a rank for every microphone perspective it could
+    // offer and leaves the ones it does not ship without pipes - two thirds of
+    // them in the benchmark set. GrandOrgue rejects a rank of no pipes, so
+    // those are dropped rather than emitted empty. Numbering follows the ranks
+    // actually written, so stop references stay correct.
+    if (pipesIt != m_PipesByRankId.end() && !pipesIt->second.empty()) {
+      m_RankNumberById[rankId] = ++rankN;
+      BuildRank(rank, rankN);
+    }
   }
   Set(WX_ORGAN, wxT("NumberOfRanks"), (long)rankN);
 }
@@ -449,19 +459,28 @@ void GOHauptwerkToOdf::BuildStops() {
             pStopRank->GetLong(wxT("NumberOfMappedDivisionInputNodes"), 0));
         }
       }
-      Set(group, wxT("NumberOfRanks"), (long)rankRefN);
-      Set(
-        group,
-        wxT("NumberOfAccessiblePipes"),
-        accessiblePipes > 0 ? accessiblePipes : 61L);
+      if (rankRefN == 0) {
+        // Every rank this stop names was dropped for having no pipes, so the
+        // stop would be an empty drawstop. Take the number back and forget it.
+        m_Entries.erase(group);
+        stopN--;
+      } else {
+        Set(group, wxT("NumberOfRanks"), (long)rankRefN);
+        Set(
+          group,
+          wxT("NumberOfAccessiblePipes"),
+          accessiblePipes > 0 ? accessiblePipes : 61L);
 
-      const unsigned manualN = manualIt->second;
-      const unsigned manualStopN = ++stopCountByManual[manualN];
-      const wxString manualGroup = numbered(wxT("Manual"), manualN);
+        const unsigned manualN = manualIt->second;
+        const unsigned manualStopN = ++stopCountByManual[manualN];
+        const wxString manualGroup = numbered(wxT("Manual"), manualN);
 
-      Set(
-        manualGroup, wxString::Format(wxT("Stop%03u"), manualStopN), (long)stopN);
-      Set(manualGroup, wxT("NumberOfStops"), (long)manualStopN);
+        Set(
+          manualGroup,
+          wxString::Format(wxT("Stop%03u"), manualStopN),
+          (long)stopN);
+        Set(manualGroup, wxT("NumberOfStops"), (long)manualStopN);
+      }
     }
   }
   Set(WX_ORGAN, wxT("NumberOfStops"), (long)stopN);
