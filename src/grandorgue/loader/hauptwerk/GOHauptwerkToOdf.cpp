@@ -116,10 +116,12 @@ GOHauptwerkToOdf::GOHauptwerkToOdf(
   const GOHauptwerkOdf &odf,
   const wxString &sampleSetPath,
   bool isVoicingEnabled,
-  bool isWindModelEnabled)
+  bool isWindModelEnabled,
+  bool isSwitchesEnabled)
   : r_Odf(odf),
     m_IsVoicingEnabled(isVoicingEnabled),
     m_IsWindModelEnabled(isWindModelEnabled),
+    m_IsSwitchesEnabled(isSwitchesEnabled),
     m_SampleSetPath(sampleSetPath),
     m_DrawstopCols(12),
     m_DrawstopRows(12),
@@ -221,9 +223,10 @@ void GOHauptwerkToOdf::BuildOrgan() {
 }
 
 void GOHauptwerkToOdf::AnalyzeSwitches() {
-  const std::vector<GOHauptwerkObject> &hwSwitches = r_Odf.GetObjects(WX_SWITCH);
+  const std::vector<GOHauptwerkObject> &hwSwitches
+    = r_Odf.GetObjects(WX_SWITCH);
 
-  if (!hwSwitches.empty()) {
+  if (m_IsSwitchesEnabled && !hwSwitches.empty()) {
     std::unordered_map<long, const GOHauptwerkObject *> switchById;
 
     for (const GOHauptwerkObject &hwSwitch : hwSwitches)

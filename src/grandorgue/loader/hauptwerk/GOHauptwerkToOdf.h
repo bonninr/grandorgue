@@ -48,6 +48,9 @@ private:
   /* Whether to state the wind supply. Unlike voicing this one costs at play
    * time, so it defaults off and stays independently switchable. */
   bool m_IsWindModelEnabled;
+  /* Whether to build the console from Hauptwerk's switch graph rather than
+   * drawing the stops directly. Load time only, but it changes the console. */
+  bool m_IsSwitchesEnabled;
   // Folder holding OrganDefinitions and OrganInstallationPackages
   wxString m_SampleSetPath;
   GOOdfEntries m_Entries;
@@ -170,7 +173,8 @@ public:
     const GOHauptwerkOdf &odf,
     const wxString &sampleSetPath,
     bool isVoicingEnabled = true,
-    bool isWindModelEnabled = false);
+    bool isWindModelEnabled = false,
+    bool isSwitchesEnabled = true);
 
   /** Runs the conversion. Safe to call once per instance. */
   void Build();

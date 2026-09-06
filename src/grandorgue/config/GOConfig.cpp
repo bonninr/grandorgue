@@ -311,6 +311,7 @@ GOConfig::GOConfig(
       this, GENERAL, wxT("HauptwerkSampledTremulants"), true),
     // Off by default: it is the only one of the three with a per-block cost.
     HauptwerkWindModel(this, GENERAL, wxT("HauptwerkWindModel"), false),
+    HauptwerkSwitches(this, GENERAL, wxT("HauptwerkSwitches"), true),
     ManageCache(this, GENERAL, wxT("ManageCache"), true),
     CompressCache(this, GENERAL, wxT("CompressCache"), false),
     LoadLastFile(

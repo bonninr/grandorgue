@@ -57,6 +57,7 @@ public:
     wxString workDir;
     bool isWindModel = false;
     bool isNoVoicing = false;
+    bool isNoSwitches = false;
 
     for (int i = 1; i < argc; i++) {
       const wxString arg = argv[i];
@@ -67,6 +68,8 @@ public:
         isWindModel = true;
       else if (arg == wxT("--no-voicing"))
         isNoVoicing = true;
+      else if (arg == wxT("--no-switches"))
+        isNoSwitches = true;
       else if (!arg.StartsWith(wxT("-")))
         organPath = arg;
     }
@@ -94,6 +97,7 @@ public:
       // conditions and leaves nothing behind for the next one.
       config.HauptwerkWindModel(isWindModel);
       config.HauptwerkVoicing(!isNoVoicing);
+      config.HauptwerkSwitches(!isNoSwitches);
 
       // True, not false: the panels are built during Load and reach for the
       // image cache, which only exists when the controller is told the

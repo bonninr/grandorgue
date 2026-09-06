@@ -139,6 +139,10 @@ public:
   GOSettingBool HauptwerkVoicing;
   GOSettingBool HauptwerkSampledTremulants;
   GOSettingBool HauptwerkWindModel;
+  /* Whether to build the console controls from Hauptwerk's switch graph.
+   * Costs only load time, but it decides what the console shows, so it is
+   * switchable like the rest: off draws the stops themselves. */
+  GOSettingBool HauptwerkSwitches;
 
   GOSettingBool ManageCache;
   GOSettingBool CompressCache;
