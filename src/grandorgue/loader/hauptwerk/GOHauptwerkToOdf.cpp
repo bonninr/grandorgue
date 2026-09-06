@@ -31,6 +31,7 @@ static const wxString WX_TREMULANT = wxT("Tremulant");
 static const wxString WX_ENCLOSURE = wxT("Enclosure");
 static const wxString WX_ENCLOSURE_PIPE = wxT("EnclosurePipe");
 static const wxString WX_KEY_ACTION = wxT("KeyAction");
+static const wxString WX_DIVISION_INPUT = wxT("DivisionInput");
 
 // Hauptwerk attribute names used in more than one place
 static const wxString WX_NAME = wxT("Name");
@@ -70,6 +71,8 @@ void GOHauptwerkToOdf::FillReadFilter(
   outFilter[WX_ENCLOSURE] = {};
   outFilter[WX_ENCLOSURE_PIPE] = {WX_PIPE_ID, wxT("EnclosureID")};
   outFilter[WX_KEY_ACTION] = {};
+  outFilter[WX_DIVISION_INPUT]
+    = {WX_DIVISION_ID, wxT("NormalMIDINoteNumber")};
   outFilter[WX_PIPE] = {
     WX_PIPE_ID,
     WX_RANK_ID,
@@ -236,6 +239,29 @@ void GOHauptwerkToOdf::BuildManuals() {
   const bool hasPedals = pedalDivisionId >= 0;
   unsigned manualN = 0;
 
+  // DivisionInput lists the notes a division actually accepts. It is worth
+  // reading rather than assuming a compass: a division that receives couplers
+  // is often extended past the keys the player can reach - the Grand Orgue of
+  // the benchmark set spans 73 notes where its keyboard has 61 - and assuming
+  // 61 would silently drop the top octave.
+  std::unordered_map<long, std::pair<long, long>> compassByDivisionId;
+
+  for (const GOHauptwerkObject &input : r_Odf.GetObjects(WX_DIVISION_INPUT)) {
+    const long divisionId = input.GetLong(WX_DIVISION_ID);
+    const long note = input.GetLong(wxT("NormalMIDINoteNumber"), -1);
+
+    if (note >= 0) {
+      const auto it = compassByDivisionId.find(divisionId);
+
+      if (it == compassByDivisionId.end())
+        compassByDivisionId[divisionId] = std::make_pair(note, note);
+      else {
+        it->second.first = std::min(it->second.first, note);
+        it->second.second = std::max(it->second.second, note);
+      }
+    }
+  }
+
   for (const GOHauptwerkObject &division : divisions) {
     const long divisionId = division.GetLong(WX_DIVISION_ID);
     const bool isPedal = divisionId == pedalDivisionId;
@@ -244,14 +270,26 @@ void GOHauptwerkToOdf::BuildManuals() {
     // A pedalboard is 32 notes from C; a manual 61 from C. Hauptwerk states
     // the compass per key action rather than per division, and a key with no
     // pipe is simply silent, so the conventional compass is safe here.
-    const long nKeys = isPedal ? 32L : 61L;
+    const auto compassIt = compassByDivisionId.find(divisionId);
+    long firstNote = 36;
+    long nLogicalKeys = isPedal ? 32L : 61L;
+
+    if (compassIt != compassByDivisionId.end()) {
+      firstNote = compassIt->second.first;
+      nLogicalKeys = compassIt->second.second - firstNote + 1;
+    }
+
+    // The extended range exists for couplers, not for fingers, so the player
+    // gets the conventional compass and the rest stays reachable by coupling.
+    const long nAccessibleKeys
+      = std::min(nLogicalKeys, isPedal ? 32L : 61L);
 
     m_ManualNumberByDivisionId[divisionId] = number;
     Set(group, WX_NAME, division.Get(WX_NAME));
-    Set(group, wxT("NumberOfLogicalKeys"), nKeys);
+    Set(group, wxT("NumberOfLogicalKeys"), nLogicalKeys);
     Set(group, wxT("FirstAccessibleKeyLogicalKeyNumber"), 1L);
-    Set(group, wxT("FirstAccessibleKeyMIDINoteNumber"), 36L);
-    Set(group, wxT("NumberOfAccessibleKeys"), nKeys);
+    Set(group, wxT("FirstAccessibleKeyMIDINoteNumber"), firstNote);
+    Set(group, wxT("NumberOfAccessibleKeys"), nAccessibleKeys);
     Set(group, wxT("NumberOfCouplers"), 0L);
     Set(group, wxT("NumberOfDivisionals"), 0L);
     Set(group, wxT("NumberOfTremulants"), 0L);
