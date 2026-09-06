@@ -69,6 +69,14 @@ float GOWindchest::GetWindPressureFactor() const {
   return factor;
 }
 
+float GOWindchest::GetWindPitchFactor() const {
+  // Flue pipes flatten roughly with the square root of pressure, and the
+  // effect is small: a chest pushed to its limit loses a few cents, not a
+  // semitone. A quarter of the amplitude loss lands in that range and keeps
+  // the organ musical while the sag is audible.
+  return 1.0f - (1.0f - GetWindPressureFactor()) * 0.25f;
+}
+
 void GOWindchest::Load(GOConfigReader &cfg, wxString group, unsigned index) {
   // Zero, the default, means an unlimited supply and no wind model at all,
   // which is how every organ without these keys behaves.

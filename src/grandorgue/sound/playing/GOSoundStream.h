@@ -57,6 +57,10 @@ private:
   int m_NextStartSegmentIndex;
 
   GOSoundResample::ResamplingPosition m_ResamplingPos;
+  /* The rate the stream was started at, so a retune is always relative to the
+   * pipe's own pitch rather than to the last retune. */
+  float m_BaseResamplingFactor = 0;
+  float m_AppliedPitchFactor = 1;
 
   /* for decoding compressed format */
   GOSoundCompressionCache cache;
@@ -129,6 +133,19 @@ public:
     const GOSoundAudioSection *pSection,
     GOSoundResample::InterpolationType interpolationType,
     const GOSoundStream *pExistingStream);
+
+  /**
+   * Retune a stream that is already playing, keeping its read position.
+   *
+   * Used by the wind model: pressure falls while a chord is held and the
+   * pipes go flat with it, which cannot be expressed by the factor chosen
+   * when the note began. ResamplingPosition::Init takes the previous position
+   * for exactly this, so the sample keeps playing from where it was and only
+   * the rate changes.
+   * @param pitchFactor 1 leaves the stream at its original pitch, below 1
+   *   flattens it
+   */
+  void RetuneStream(float pitchFactor);
 
   /* Read an audio buffer from an audio section stream */
   bool ReadBlock(float *buffer, unsigned int n_blocks);

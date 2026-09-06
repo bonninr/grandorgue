@@ -74,6 +74,12 @@ public:
    *   so. Cheap enough to call once per audio block per chest.
    */
   float GetWindPressureFactor() const;
+  /**
+   * @return what to multiply a pipe's playback rate by at the current
+   *   pressure. A pipe starved of wind goes flat, which is most of what makes
+   *   wind sag recognisable as wind rather than as a volume dip.
+   */
+  float GetWindPitchFactor() const;
   unsigned GetTremulantCount();
   unsigned GetTremulantId(unsigned index);
   unsigned GetRankCount();

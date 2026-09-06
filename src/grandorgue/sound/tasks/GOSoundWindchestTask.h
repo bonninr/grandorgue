@@ -44,6 +44,9 @@ public:
   void NewRound() override;
   void Init(ptr_vector<GOSoundTremulantTask> &tremulantTasks);
 
+  /** @return the chest this task belongs to, or nullptr for the special one. */
+  const GOWindchest *GetWindchest() const { return p_windchest; }
+
   float GetWindchestVolume() const {
     return p_windchest ? p_windchest->GetVolume() : 1;
   }

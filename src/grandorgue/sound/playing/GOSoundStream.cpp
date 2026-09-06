@@ -7,6 +7,8 @@
 
 #include "GOSoundStream.h"
 
+#include <cmath>
+
 #include <wx/log.h>
 
 #include "GOSoundAudioSection.h"
@@ -324,8 +326,24 @@ void GOSoundStream::InitStream(
 
   const unsigned startOffset = InitFromSection(pSection, 0, interpolationType);
 
-  m_ResamplingPos.Init(
-    sampleRateAdjustment * pSection->GetSampleRate(), startOffset);
+  m_BaseResamplingFactor = sampleRateAdjustment * pSection->GetSampleRate();
+  m_AppliedPitchFactor = 1;
+  m_ResamplingPos.Init(m_BaseResamplingFactor, startOffset);
+}
+
+void GOSoundStream::RetuneStream(float pitchFactor) {
+  // A hundredth of a semitone is about 0.06 percent; below that the change is
+  // inaudible and re-initialising the position every block would only cost
+  // time and risk a discontinuity.
+  if (
+    m_BaseResamplingFactor > 0
+    && fabsf(pitchFactor - m_AppliedPitchFactor) > 0.0006f) {
+    m_ResamplingPos.Init(
+      m_BaseResamplingFactor * pitchFactor,
+      m_ResamplingPos.GetIndex(),
+      &m_ResamplingPos);
+    m_AppliedPitchFactor = pitchFactor;
+  }
 }
 
 void GOSoundStream::InitAlignedStream(

@@ -7,6 +7,8 @@
 
 #include "GOSoundGroupTask.h"
 
+#include "model/GOWindchest.h"
+
 #include "scheduler/GOSchedulerThread.h"
 #include "sound/playing/GOSoundSamplerPlayer.h"
 #include "threading/GOMutexLocker.h"
@@ -58,11 +60,18 @@ void GOSoundGroupTask::ProcessList(
 
     GOSoundWindchestTask *const windchest = sampler->p_WindchestTask;
 
-    if (
-      windchest
-      && r_SamplerPlayer.ProcessSampler(
-        output_buffer, sampler, GetNFrames(), windchest->GetVolume()))
-      Add(sampler);
+    if (windchest) {
+      // Only chests that declare a limited supply pay for this, and the
+      // stream itself ignores a change too small to hear.
+      const GOWindchest *pWindchest = windchest->GetWindchest();
+
+      if (pWindchest && pWindchest->HasWindModel())
+        sampler->stream.RetuneStream(pWindchest->GetWindPitchFactor());
+
+      if (r_SamplerPlayer.ProcessSampler(
+            output_buffer, sampler, GetNFrames(), windchest->GetVolume()))
+        Add(sampler);
+    }
   }
 }
 
