@@ -36,6 +36,8 @@ GOSoundProvider::GOSoundProvider()
     m_MidiPitchFract(0),
     m_Tuning(1),
     m_ToneBalanceValue(0),
+    m_VoicingFilterFrequency(0),
+    m_VoicingFilterGain(0),
     m_IsWaveTremulantActive(BOOL3_FALSE),
     m_ReleaseTail(0),
     m_Attack(),
@@ -177,9 +179,20 @@ void GOSoundProvider::SetToneBalanceValue(int8_t value) {
   m_ToneBalance.Init(m_ToneBalanceValue);
 }
 
+void GOSoundProvider::SetVoicingFilter(double frequency, double gainDecibels) {
+  m_VoicingFilterFrequency = frequency;
+  m_VoicingFilterGain = gainDecibels;
+}
+
 void GOSoundProvider::SetToneBalanceFilterSamplerate(unsigned samplerate) {
   m_ToneBalance.SetFilterSamplerate(samplerate);
   m_ToneBalance.Init(m_ToneBalanceValue);
+  m_VoicingFilter.SetSamplerate(samplerate);
+  if (m_VoicingFilterFrequency > 0)
+    m_VoicingFilter.Init(
+      GOSoundFilter::FilterType::TYPE_HIGH_SHELF,
+      m_VoicingFilterFrequency,
+      m_VoicingFilterGain);
 }
 
 unsigned GOSoundProvider::GetMidiKeyNumber() const { return m_MidiKeyNumber; }

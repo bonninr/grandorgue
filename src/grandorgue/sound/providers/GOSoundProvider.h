@@ -11,6 +11,7 @@
 #include <cstdint>
 #include <vector>
 
+#include "sound/playing/GOSoundFilter.h"
 #include "sound/playing/GOSoundToneBalanceFilter.h"
 
 #include "GOBool3.h"
@@ -44,6 +45,13 @@ protected:
   float m_Tuning;
   int8_t m_ToneBalanceValue;
   GOSoundToneBalanceFilter m_ToneBalance;
+  /* A shelf above a stated frequency, which is how a sample set voices a
+   * pipe brighter or duller than it was recorded. Separate from the tone
+   * balance because that one belongs to the listener and this one to the
+   * organ; both apply. */
+  GOSoundFilter m_VoicingFilter;
+  double m_VoicingFilterFrequency;
+  double m_VoicingFilterGain;
   bool m_IsWaveTremulantActive;
   unsigned m_ReleaseTail;
   ptr_vector<GOSoundAudioSection> m_Attack;
@@ -91,6 +99,15 @@ public:
   const GOSoundToneBalanceFilter *GetToneBalance() const {
     return &m_ToneBalance;
   }
+
+  /**
+   * Voices this pipe with a shelf above a frequency.
+   *
+   * @param frequency where the shelf starts, in Hz; zero switches it off
+   * @param gainDecibels how much to lift or drop everything above it
+   */
+  void SetVoicingFilter(double frequency, double gainDecibels);
+  const GOSoundFilter *GetVoicingFilter() const { return &m_VoicingFilter; }
   unsigned GetReleaseTail() const { return m_ReleaseTail; }
   void SetReleaseTail(unsigned releaseTail) { m_ReleaseTail = releaseTail; }
 

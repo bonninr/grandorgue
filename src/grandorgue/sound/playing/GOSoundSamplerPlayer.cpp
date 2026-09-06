@@ -155,6 +155,8 @@ bool GOSoundSamplerPlayer::ProcessSampler(
     sampler->fader.Process(n_frames, temp, volume);
     if (sampler->toneBalanceFilterState.IsToApply())
       sampler->toneBalanceFilterState.ProcessBuffer(n_frames, temp);
+    if (sampler->voicingFilterState.IsToApply())
+      sampler->voicingFilterState.ProcessBuffer(n_frames, temp);
 
     /* Add these samples to the current output buffer shifting
      * right by the necessary amount to bring the sample gain back
@@ -237,6 +239,8 @@ GOSoundSampler *GOSoundSamplerPlayer::CreateTaskSample(
       sampler->time = start_time;
       sampler->toneBalanceFilterState.Init(
         sampler->p_SoundProvider->GetToneBalance()->GetFilter());
+      sampler->voicingFilterState.Init(
+        sampler->p_SoundProvider->GetVoicingFilter());
       sampler->is_release = isRelease;
       sampler->m_SamplerTaskId = samplerTaskId;
       sampler->m_AudioGroupId = audioGroup;
@@ -284,6 +288,8 @@ void GOSoundSamplerPlayer::SwitchToAnotherAttack(GOSoundSampler *pSampler) {
 
         new_sampler->toneBalanceFilterState.Init(
           new_sampler->p_SoundProvider->GetToneBalance()->GetFilter());
+        new_sampler->voicingFilterState.Init(
+          new_sampler->p_SoundProvider->GetVoicingFilter());
 
         StartSampler(new_sampler);
       }
@@ -434,6 +440,8 @@ void GOSoundSamplerPlayer::CreateReleaseSampler(GOSoundSampler *handle) {
       new_sampler->m_AudioGroupId = handle->m_AudioGroupId;
       new_sampler->toneBalanceFilterState.Init(
         new_sampler->p_SoundProvider->GetToneBalance()->GetFilter());
+      new_sampler->voicingFilterState.Init(
+        new_sampler->p_SoundProvider->GetVoicingFilter());
       StartSampler(new_sampler);
       handle->time = m_CurrentTime;
     }

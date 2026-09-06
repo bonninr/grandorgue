@@ -49,6 +49,9 @@ private:
   float m_OdfMidiPitchFraction;
   int m_SampleMidiKeyNumber;
   float m_SampleMidiPitchFraction;
+  // The shelf this pipe is voiced with: where it starts, and by how much
+  float m_VoicingEqFrequency;
+  float m_VoicingEqGain;
   bool m_RetunePipe;
   bool m_IsTemperamentOriginalBased;
   GOSoundProviderWave m_SoundProvider;

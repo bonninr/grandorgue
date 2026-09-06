@@ -25,6 +25,7 @@ struct GOSoundSampler {
   GOSoundStream stream;
   GOSoundFader fader;
   GOSoundFilter::FilterState toneBalanceFilterState;
+  GOSoundFilter::FilterState voicingFilterState;
   uint64_t time;
   unsigned velocity;
   unsigned delay;
