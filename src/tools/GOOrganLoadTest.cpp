@@ -82,7 +82,10 @@ public:
       // the definition is either understood or it is not long before then.
       config.ManageCache(false);
 
-      GOOrganController controller(config, false);
+      // True, not false: the panels are built during Load and reach for the
+      // image cache, which only exists when the controller is told the
+      // application is up. With false it is null and the load segfaults.
+      GOOrganController controller(config, true);
       GOOrgan organ(organPath);
       GOSilentProgress monitor;
       const wxString errMsg = controller.Load(organ, wxEmptyString, true, monitor);
