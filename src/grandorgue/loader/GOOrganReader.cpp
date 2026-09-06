@@ -16,6 +16,8 @@
 #include "config/GOConfigFileReader.h"
 #include "files/GOOpenedFile.h"
 #include "files/GOStdFileName.h"
+#include "hauptwerk/GOHauptwerkOdf.h"
+#include "hauptwerk/GOHauptwerkToOdf.h"
 
 #include "GOFileStore.h"
 #include "GOLoaderFilename.h"
@@ -65,7 +67,32 @@ GOOrganReader::GOOrganReader(
 
   GOConfigFileReader odfIniFile;
 
-  if (!odfIniFile.Read(odfName.Open(fileStore).get()))
+  // A Hauptwerk definition is converted to the settings an ODF would have
+  // carried, then handed on exactly like one. Everything past this point -
+  // the config DB, the model, the cache - is unaware of the difference.
+  if (odfName.GetPath().Lower().EndsWith(wxT(".organ_hauptwerk_xml"))) {
+    GOHauptwerkOdf hwOdf;
+    GOHauptwerkOdf::GOAttributeFilter filter;
+
+    GOHauptwerkToOdf::FillReadFilter(filter);
+    hwOdf.SetFilter(filter);
+
+    const wxString hwErrMsg = hwOdf.Read(odfName.Open(fileStore).get());
+
+    if (!hwErrMsg.IsEmpty())
+      throw hwErrMsg;
+
+    // The definition lives in OrganDefinitions; samples are addressed
+    // relative to the folder holding it.
+    const wxString sampleSetPath
+      = go_get_path(go_get_path(odfName.GetPath()));
+    GOHauptwerkToOdf converter(hwOdf, sampleSetPath);
+
+    converter.Build();
+    for (const wxString &warning : converter.GetWarnings())
+      wxLogWarning(wxT("%s"), warning);
+    odfIniFile.SetContent(converter.GetEntries(), hwOdf.GetHash());
+  } else if (!odfIniFile.Read(odfName.Open(fileStore).get()))
     throw wxString::Format(_("Unable to read '%s'"), odfName.GetPath());
 
   m_LoadedOrganInfo.odfHash = odfIniFile.GetHash();

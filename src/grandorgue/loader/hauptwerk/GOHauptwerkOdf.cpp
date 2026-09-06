@@ -13,6 +13,7 @@
 #include "files/GOOpenedFile.h"
 
 #include "GOBuffer.h"
+#include "GOHash.h"
 
 static const wxString WX_EMPTY = wxEmptyString;
 static const wxString WX_ROOT_TAG = wxT("Hauptwerk");
@@ -251,6 +252,11 @@ wxString GOHauptwerkOdf::Read(GOOpenedFile *pFile) {
   if (!pFile->ReadContent(content))
     errMsg = _("Failed to read the Hauptwerk organ definition");
   else {
+    GOHash hash;
+
+    hash.Update(content.get(), content.GetCount());
+    m_Hash = hash.getStringHash();
+
     // Hauptwerk writes these as UTF-8; fall back rather than lose the whole
     // file over one bad byte in a stop name.
     wxString buffer(content.get(), wxConvUTF8, content.GetCount());

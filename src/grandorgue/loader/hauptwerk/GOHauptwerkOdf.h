@@ -78,6 +78,7 @@ public:
 
 private:
   wxString m_FileFormatVersion;
+  wxString m_Hash;
   bool m_IsCompressedFormat;
   GOAttributeFilter m_Filter;
 
@@ -118,6 +119,8 @@ public:
   wxString Read(GOOpenedFile *pFile);
 
   const wxString &GetFileFormatVersion() const { return m_FileFormatVersion; }
+  /** Hash of the raw file, so the cache is keyed to this definition. */
+  const wxString &GetHash() const { return m_Hash; }
   /** @return whether the file uses the letter-coded spelling we cannot read. */
   bool IsCompressedFormat() const { return m_IsCompressedFormat; }
 

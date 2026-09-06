@@ -21,6 +21,13 @@ GOConfigFileReader::GOConfigFileReader() : m_Entries(), m_Hash() {}
 
 GOConfigFileReader::~GOConfigFileReader() {}
 
+void GOConfigFileReader::SetContent(
+  const std::map<wxString, std::map<wxString, wxString>> &entries,
+  const wxString &hash) {
+  m_Entries = entries;
+  m_Hash = hash;
+}
+
 wxString GOConfigFileReader::GetHash() { return m_Hash; }
 
 const std::map<wxString, std::map<wxString, wxString>>
