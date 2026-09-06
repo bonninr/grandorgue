@@ -131,6 +131,14 @@ private:
   void AnalyzeSwitches();
   /** Writes the switch sections AnalyzeSwitches worked out. */
   void BuildSwitches();
+  /**
+   * Fills GrandOrgue's crescendo pedal from Hauptwerk's crescendo stages.
+   *
+   * Both hold the same thing - a series of steps, each saying of every
+   * control whether it is on or off - so the stages are written as the
+   * combinations the pedal already reads, and the pedal plays them.
+   */
+  void BuildCrescendo();
   void BuildWindchests();
   void BuildManuals();
   void BuildRanks();

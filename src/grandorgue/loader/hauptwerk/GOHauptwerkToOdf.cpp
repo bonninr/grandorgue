@@ -34,6 +34,8 @@ static const wxString WX_ENCLOSURE_PIPE = wxT("EnclosurePipe");
 static const wxString WX_KEY_ACTION = wxT("KeyAction");
 static const wxString WX_SWITCH = wxT("Switch");
 static const wxString WX_SWITCH_LINKAGE = wxT("SwitchLinkage");
+static const wxString WX_COMBINATION = wxT("Combination");
+static const wxString WX_COMBINATION_ELEMENT = wxT("CombinationElement");
 static const wxString WX_DIVISION_INPUT = wxT("DivisionInput");
 
 // Hauptwerk attribute names used in more than one place
@@ -45,6 +47,7 @@ static const wxString WX_SAMPLE_ID = wxT("SampleID");
 static const wxString WX_STOP_ID = wxT("StopID");
 static const wxString WX_SWITCH_ID = wxT("SwitchID");
 static const wxString WX_CONTROLLING_SWITCH_ID = wxT("ControllingSwitchID");
+static const wxString WX_COMBINATION_ID = wxT("CombinationID");
 static const wxString WX_DIVISION_ID = wxT("DivisionID");
 
 // Hauptwerk marks the release that catches every remaining key-press length
@@ -55,6 +58,10 @@ static const long HW_LINK_ENGAGE = 1;
 static const long HW_LINK_DISENGAGE = 2;
 // GOOrganModel reads NumberOfSwitches with this as its upper bound
 static const unsigned MAX_ODF_SWITCHES = 999;
+// Hauptwerk combination type of a crescendo stage
+static const long HW_COMBINATION_CRESCENDO = 4;
+// Positions of GOSetter's crescendo pedal (CRESCENDO_STEPS there)
+static const unsigned N_CRESCENDO_STEPS = 32;
 
 static const wxString WX_ORGAN = wxT("Organ");
 static const wxString WX_ODF_YES = wxT("Y");
@@ -83,6 +90,12 @@ void GOHauptwerkToOdf::FillReadFilter(
   outFilter[WX_KEY_ACTION] = {};
   outFilter[WX_SWITCH]
     = {WX_SWITCH_ID, WX_NAME, wxT("DefaultToEngaged"), wxT("Clickable")};
+  outFilter[WX_COMBINATION]
+    = {WX_COMBINATION_ID, wxT("CombinationTypeCode")};
+  outFilter[WX_COMBINATION_ELEMENT] = {
+    WX_COMBINATION_ID,
+    wxT("ControlledSwitchID"),
+    wxT("InitialStoredStateIsEngaged")};
   outFilter[WX_SWITCH_LINKAGE] = {
     wxT("SourceSwitchID"),
     wxT("DestSwitchID"),
@@ -451,6 +464,94 @@ void GOHauptwerkToOdf::AnalyzeSwitches() {
         for (long hwId : component.hwSwitchIds)
           m_SwitchNumberByHwId[hwId] = (unsigned)m_SwitchComponents.size() + 1;
         m_SwitchComponents.push_back(component);
+      }
+    }
+  }
+}
+
+void GOHauptwerkToOdf::BuildCrescendo() {
+  /* Hauptwerk states the crescendo as combinations over the switches, so
+   * there is nothing to build without them. */
+  if (!m_SwitchComponents.empty()) {
+    std::map<long, const GOHauptwerkObject *> stageById;
+
+    for (const GOHauptwerkObject &combination :
+         r_Odf.GetObjects(WX_COMBINATION))
+      if (
+        combination.GetLong(wxT("CombinationTypeCode"))
+        == HW_COMBINATION_CRESCENDO)
+        stageById[combination.GetLong(WX_COMBINATION_ID)] = &combination;
+
+    if (!stageById.empty()) {
+      std::unordered_map<long, std::vector<const GOHauptwerkObject *>>
+        elementsByCombinationId;
+      std::vector<long> stageIds;
+
+      for (const GOHauptwerkObject &element :
+           r_Odf.GetObjects(WX_COMBINATION_ELEMENT))
+        elementsByCombinationId[element.GetLong(WX_COMBINATION_ID)].push_back(
+          &element);
+      // Ordered by id, which is the order the stages run in
+      for (const auto &pair : stageById)
+        stageIds.push_back(pair.first);
+
+      const unsigned nStages = (unsigned)stageIds.size();
+
+      /* Hauptwerk states as many stages as the organ has controls - Nancy has
+       * 73, each adding one more stop than the last - while GrandOrgue's
+       * crescendo pedal has 32 positions, so the stages are sampled evenly
+       * across them. The first position is the first stage, the last is the
+       * last, and the shape of the crescendo is kept. */
+      for (unsigned stepN = 1; stepN <= N_CRESCENDO_STEPS; stepN++) {
+        const unsigned stageI = N_CRESCENDO_STEPS > 1
+          ? (stepN - 1) * (nStages - 1) / (N_CRESCENDO_STEPS - 1)
+          : 0;
+        const wxString group
+          = wxString::Format(wxT("SetterCrescendo1_%03u"), stepN);
+        const auto elementsIt
+          = elementsByCombinationId.find(stageIds[stageI]);
+        std::set<unsigned> engagedSwitchNs;
+        std::set<unsigned> releasedSwitchNs;
+
+        if (elementsIt != elementsByCombinationId.end())
+          for (const GOHauptwerkObject *pElement : elementsIt->second) {
+            const auto switchIt = m_SwitchNumberByHwId.find(
+              pElement->GetLong(wxT("ControlledSwitchID")));
+
+            if (switchIt != m_SwitchNumberByHwId.end()) {
+              if (
+                pElement->Get(wxT("InitialStoredStateIsEngaged")) == WX_ODF_YES)
+                engagedSwitchNs.insert(switchIt->second);
+              else
+                releasedSwitchNs.insert(switchIt->second);
+            }
+          }
+
+        unsigned switchRefN = 0;
+
+        /* A stage says of every control whether it is on or off, not only
+         * which ones are on, and GrandOrgue reads a negative number as "off".
+         * Stating both is what lets the pedal be moved back down, and what
+         * keeps the crescendo from touching the stops the player drew by
+         * hand: those switches are not named here at all. */
+        for (unsigned switchN : engagedSwitchNs)
+          Set(
+            group,
+            wxString::Format(wxT("SwitchNumber%03u"), ++switchRefN),
+            (long)switchN);
+        for (unsigned switchN : releasedSwitchNs)
+          if (engagedSwitchNs.find(switchN) == engagedSwitchNs.end())
+            Set(
+              group,
+              wxString::Format(wxT("SwitchNumber%03u"), ++switchRefN),
+              -(long)switchN);
+        /* Required whatever they hold: GrandOrgue takes the presence of
+         * NumberOfStops as the sign that a combination is stated at all. */
+        Set(group, wxT("NumberOfStops"), 0L);
+        Set(group, wxT("NumberOfCouplers"), 0L);
+        Set(group, wxT("NumberOfTremulants"), 0L);
+        Set(group, wxT("NumberOfDivisionalCouplers"), 0L);
+        Set(group, wxT("NumberOfSwitches"), (long)switchRefN);
       }
     }
   }
@@ -1160,6 +1261,7 @@ void GOHauptwerkToOdf::Build() {
     nDrawn = r_Odf.GetObjectCount(WX_STOP);
   BuildDefaultConsole(nDrawn, r_Odf.GetObjectCount(WX_DIVISION));
   BuildSwitches();
+  BuildCrescendo();
   BuildStops();
   BuildCouplers();
   BuildTremulants();
