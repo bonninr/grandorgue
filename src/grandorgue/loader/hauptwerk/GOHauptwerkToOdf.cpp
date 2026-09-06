@@ -1570,76 +1570,86 @@ void GOHauptwerkToOdf::BuildCouplers() {
       srcIt != m_ManualNumberByKeyboardId.end()
       && dstIt != m_ManualNumberByKeyboardId.end()) {
       const long keyshift = action.GetLong(wxT("MIDINoteNumberIncrement"), 0);
-
       /* Source and destination on one manual is how an octave coupler is
        * stated - and also how the keyboard under the hands is joined to the
        * bus that plays its division. The shift tells the two apart: without
        * one they are the same keys, wiring already accounted for, and
        * emitting it would double every note the manual sounds. */
-      if (srcIt->second == dstIt->second && keyshift == 0)
-        continue;
-      /* GOCoupler reads the shift as a required value within its own bounds
-       * and refuses one outside them, taking the whole organ down over a
-       * single coupler. */
-      if (keyshift < MIN_KEYSHIFT || keyshift > MAX_KEYSHIFT) {
-        Warn(wxString::Format(
-          _("Coupler \"%s\" transposes by %ld semitones, more than "
-            "GrandOrgue couples; it is left out"),
-          action.Get(WX_NAME),
-          keyshift));
-        continue;
+      const bool isBusJoin = srcIt->second == dstIt->second && keyshift == 0;
+
+      if (!isBusJoin) {
+        /* GOCoupler reads the shift as a required value within its own bounds
+         * and refuses one outside them, taking the whole organ down over a
+         * single coupler. */
+        if (keyshift < MIN_KEYSHIFT || keyshift > MAX_KEYSHIFT)
+          Warn(wxString::Format(
+            _("Coupler \"%s\" transposes by %ld semitones, more than "
+              "GrandOrgue couples; it is left out"),
+            action.Get(WX_NAME),
+            keyshift));
+        else {
+          const wxString group = numbered(wxT("Coupler"), ++couplerN);
+
+          Set(group, WX_NAME, action.Get(WX_NAME));
+          Set(group, wxT("UnisonOff"), WX_ODF_NO);
+          Set(group, wxT("DestinationManual"), (long)dstIt->second);
+          Set(group, wxT("DestinationKeyshift"), keyshift);
+          /* The keys the action actually carries. A tirasse is 32 notes wide
+           * where the manual it couples to is 61, and letting that default
+           * would couple keys the pedalboard has not got. */
+          Set(
+            group,
+            wxT("FirstMIDINoteNumber"),
+            action.GetLong(wxT("MIDINoteNumOfFirstSourceKey"), 0));
+          Set(
+            group,
+            wxT("NumberOfKeys"),
+            action.GetLong(wxT("NumberOfKeys"), 127));
+          /* A Hauptwerk key action delivers its notes to a keyboard, and that
+           * keyboard sends on everything it receives through its own outgoing
+           * actions - there is no mark on an action saying whether what arrives
+           * by coupling travels further, because it always does. So the
+           * couplers cascade, which is also what the organ they are copied from
+           * does: draw the tirasse and the Positif to Grand Orgue together on a
+           * French console and the pedal sounds the Positif. */
+          Set(
+            group,
+            wxT("CoupleToSubsequentUnisonIntermanualCouplers"),
+            WX_ODF_YES);
+          Set(
+            group,
+            wxT("CoupleToSubsequentUpwardIntermanualCouplers"),
+            WX_ODF_YES);
+          Set(
+            group,
+            wxT("CoupleToSubsequentDownwardIntermanualCouplers"),
+            WX_ODF_YES);
+          Set(
+            group,
+            wxT("CoupleToSubsequentUpwardIntramanualCouplers"),
+            WX_ODF_YES);
+          Set(
+            group,
+            wxT("CoupleToSubsequentDownwardIntramanualCouplers"),
+            WX_ODF_YES);
+          if (!ControlByHwSwitch(
+                group, action.GetLong(wxT("ConditionSwitchID")))) {
+            Set(group, wxT("Displayed"), WX_ODF_YES);
+            Set(group, wxT("DefaultToEngaged"), WX_ODF_NO);
+            PlaceDrawstop(group);
+          }
+
+          const unsigned srcManualN = srcIt->second;
+          const unsigned manualCouplerN = ++couplerCountByManual[srcManualN];
+          const wxString manualGroup = numbered(wxT("Manual"), srcManualN);
+
+          Set(
+            manualGroup,
+            wxString::Format(wxT("Coupler%03u"), manualCouplerN),
+            (long)couplerN);
+          Set(manualGroup, wxT("NumberOfCouplers"), (long)manualCouplerN);
+        }
       }
-
-      const wxString group = numbered(wxT("Coupler"), ++couplerN);
-
-      Set(group, WX_NAME, action.Get(WX_NAME));
-      Set(group, wxT("UnisonOff"), WX_ODF_NO);
-      Set(group, wxT("DestinationManual"), (long)dstIt->second);
-      Set(group, wxT("DestinationKeyshift"), keyshift);
-      /* The keys the action actually carries. A tirasse is 32 notes wide
-       * where the manual it couples to is 61, and letting that default would
-       * couple keys the pedalboard has not got. */
-      Set(
-        group,
-        wxT("FirstMIDINoteNumber"),
-        action.GetLong(wxT("MIDINoteNumOfFirstSourceKey"), 0));
-      Set(group, wxT("NumberOfKeys"), action.GetLong(wxT("NumberOfKeys"), 127));
-      /* A Hauptwerk key action delivers its notes to a keyboard, and that
-       * keyboard sends on everything it receives through its own outgoing
-       * actions - there is no mark on an action saying whether what arrives
-       * by coupling travels further, because it always does. So the couplers
-       * cascade, which is also what the organ they are copied from does:
-       * draw the tirasse and the Positif to Grand Orgue together on a French
-       * console and the pedal sounds the Positif. */
-      Set(
-        group, wxT("CoupleToSubsequentUnisonIntermanualCouplers"), WX_ODF_YES);
-      Set(
-        group, wxT("CoupleToSubsequentUpwardIntermanualCouplers"), WX_ODF_YES);
-      Set(
-        group,
-        wxT("CoupleToSubsequentDownwardIntermanualCouplers"),
-        WX_ODF_YES);
-      Set(
-        group, wxT("CoupleToSubsequentUpwardIntramanualCouplers"), WX_ODF_YES);
-      Set(
-        group,
-        wxT("CoupleToSubsequentDownwardIntramanualCouplers"),
-        WX_ODF_YES);
-      if (!ControlByHwSwitch(group, action.GetLong(wxT("ConditionSwitchID")))) {
-        Set(group, wxT("Displayed"), WX_ODF_YES);
-        Set(group, wxT("DefaultToEngaged"), WX_ODF_NO);
-        PlaceDrawstop(group);
-      }
-
-      const unsigned srcManualN = srcIt->second;
-      const unsigned manualCouplerN = ++couplerCountByManual[srcManualN];
-      const wxString manualGroup = numbered(wxT("Manual"), srcManualN);
-
-      Set(
-        manualGroup,
-        wxString::Format(wxT("Coupler%03u"), manualCouplerN),
-        (long)couplerN);
-      Set(manualGroup, wxT("NumberOfCouplers"), (long)manualCouplerN);
     }
   }
 }
