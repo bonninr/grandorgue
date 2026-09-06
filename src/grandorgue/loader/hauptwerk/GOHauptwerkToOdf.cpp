@@ -12,6 +12,7 @@
 
 #include <algorithm>
 #include <cmath>
+#include <iterator>
 
 #include "GOHauptwerkOdf.h"
 
@@ -48,6 +49,8 @@ static const wxString WX_IMAGE_SET = wxT("ImageSet");
 static const wxString WX_IMAGE_SET_ELEMENT = wxT("ImageSetElement");
 static const wxString WX_IMAGE_SET_INSTANCE = wxT("ImageSetInstance");
 static const wxString WX_DIVISION_INPUT = wxT("DivisionInput");
+static const wxString WX_CONTINUOUS_CONTROL = wxT("ContinuousControl");
+static const wxString WX_CC_IMAGE_STAGE = wxT("ContinuousControlImageSetStage");
 
 // Hauptwerk attribute names used in more than one place
 static const wxString WX_NAME = wxT("Name");
@@ -62,6 +65,8 @@ static const wxString WX_SOURCE_SWITCH_ID = wxT("SourceSwitchID");
 static const wxString WX_DEST_SWITCH_ID = wxT("DestSwitchID");
 static const wxString WX_CLOSED_ATTN_DB
   = wxT("FiltParamWhenClsd_OverallAttnDb");
+static const wxString WX_IMAGE_SET_ID = wxT("ImageSetID");
+static const wxString WX_IMAGE_SET_INSTANCE_ID = wxT("ImageSetInstanceID");
 static const wxString WX_COMBINATION_ID = wxT("CombinationID");
 static const wxString WX_INSTALLATION_PACKAGE_ID = wxT("InstallationPackageID");
 static const wxString WX_DIVISION_ID = wxT("DivisionID");
@@ -82,6 +87,10 @@ static const long MAX_CROSSFADE_MS = 3000;
 static const long HW_COMBINATION_CRESCENDO = 4;
 // Positions of GOSetter's crescendo pedal (CRESCENDO_STEPS there)
 static const unsigned N_CRESCENDO_STEPS = 32;
+// GOGUIEnclosure reads BitmapCount with this as its upper bound
+static const unsigned MAX_ENCLOSURE_BITMAPS = 128;
+// The value a shutter, and every other MIDI control, runs up to
+static const long MAX_MIDI_VALUE = 127;
 // GOCoupler reads DestinationKeyshift with these as its bounds
 static const long MIN_KEYSHIFT = -24;
 static const long MAX_KEYSHIFT = 24;
@@ -177,6 +186,12 @@ void GOHauptwerkToOdf::FillReadFilter(
     wxT("DisengageLinkActionCode")};
   outFilter[WX_DIVISION_INPUT]
     = {WX_DIVISION_ID, wxT("NormalMIDINoteNumber"), WX_SWITCH_ID};
+  outFilter[WX_CONTINUOUS_CONTROL]
+    = {wxT("ControlID"), WX_IMAGE_SET_INSTANCE_ID};
+  outFilter[WX_CC_IMAGE_STAGE] = {
+    wxT("HighestContinuousControlValue"),
+    WX_IMAGE_SET_ID,
+    wxT("ImageSetIndex")};
   outFilter[WX_PIPE] = {
     WX_PIPE_ID,
     WX_RANK_ID,
@@ -728,6 +743,40 @@ void GOHauptwerkToOdf::BuildPanels() {
          r_Odf.GetObjects(WX_IMAGE_SET_INSTANCE))
       instanceById[instance.GetLong(wxT("ImageSetInstanceID"))] = &instance;
 
+    /* Which instance draws which swell shoe. Hauptwerk hangs a box off a
+     * continuous control - the shutter position - and that control off an
+     * image whose frames are the shutter at each stage of its travel. */
+    std::unordered_map<long, unsigned> enclosureNByInstanceId;
+    std::unordered_map<long, const GOHauptwerkObject *> controlById;
+    // image set -> the highest value a frame covers -> that frame's index
+    std::unordered_map<long, std::map<long, long>> stagesByImageSetId;
+
+    for (const GOHauptwerkObject &control :
+         r_Odf.GetObjects(WX_CONTINUOUS_CONTROL))
+      controlById[control.GetLong(wxT("ControlID"))] = &control;
+    for (const GOHauptwerkObject &stage : r_Odf.GetObjects(WX_CC_IMAGE_STAGE))
+      stagesByImageSetId[stage.GetLong(WX_IMAGE_SET_ID)]
+                        [stage.GetLong(wxT("HighestContinuousControlValue"))]
+        = stage.GetLong(wxT("ImageSetIndex"));
+    for (const GOHauptwerkObject &enclosure : r_Odf.GetObjects(WX_ENCLOSURE)) {
+      const auto encIt
+        = m_EnclosureNumberById.find(enclosure.GetLong(wxT("EnclosureID")));
+      const auto controlIt = controlById.find(
+        enclosure.GetLong(wxT("ShutterPositionContinuousControlID")));
+
+      if (
+        encIt != m_EnclosureNumberById.end()
+        && controlIt != controlById.end()) {
+        const long instanceId
+          = controlIt->second->GetLong(WX_IMAGE_SET_INSTANCE_ID);
+
+        // A box whose shutter is not drawn - Nancy has one - stays playable
+        // from the generic console and simply has no shoe on this panel.
+        if (instanceId != 0)
+          enclosureNByInstanceId[instanceId] = encIt->second;
+      }
+    }
+
     /* Which instance draws which switch, and in which of its images. One
      * drawstop is several switches in Hauptwerk - the stop, its picture on
      * the console, its picture on the jamb - and they were condensed into one
@@ -750,6 +799,7 @@ void GOHauptwerkToOdf::BuildPanels() {
       // Ordered so the panel comes out the same way every time it is built
       std::map<long, const GOHauptwerkObject *> backgroundsByOrder;
       std::map<unsigned, const GOHauptwerkObject *> instancesBySwitchN;
+      std::map<unsigned, const GOHauptwerkObject *> instancesByEnclosureN;
       unsigned screenWidth = 0;
       unsigned screenHeight = 0;
       unsigned instanceOrder = 0;
@@ -761,7 +811,9 @@ void GOHauptwerkToOdf::BuildPanels() {
           const auto imageSetIt
             = imageSetById.find(instance.GetLong(wxT("ImageSetID")));
           const auto switchIt = switchByInstanceId.find(
-            instance.GetLong(wxT("ImageSetInstanceID")));
+            instance.GetLong(WX_IMAGE_SET_INSTANCE_ID));
+          const auto enclosureIt = enclosureNByInstanceId.find(
+            instance.GetLong(WX_IMAGE_SET_INSTANCE_ID));
 
           if (imageSetIt != imageSetById.end()) {
             const unsigned right
@@ -781,6 +833,8 @@ void GOHauptwerkToOdf::BuildPanels() {
               instancesBySwitchN[switchNByHwId[switchIt->second->GetLong(
                 WX_SWITCH_ID)]]
                 = &instance;
+            else if (enclosureIt != enclosureNByInstanceId.end())
+              instancesByEnclosureN[enclosureIt->second] = &instance;
             else
               /* Everything that is not a control is the picture of the
                * console. Keyed on the layer Hauptwerk gives it so the panel
@@ -809,8 +863,7 @@ void GOHauptwerkToOdf::BuildPanels() {
          * still read, so it is given the smallest legal one. */
         SetConsoleMetrics(panelGroup, 2, 1, screenWidth, screenHeight, false);
         for (const wxString &key :
-             {wxT("NumberOfEnclosures"),
-              wxT("NumberOfTremulants"),
+             {wxT("NumberOfTremulants"),
               wxT("NumberOfDivisionalCouplers"),
               wxT("NumberOfGenerals"),
               wxT("NumberOfReversiblePistons"),
@@ -888,6 +941,83 @@ void GOHauptwerkToOdf::BuildPanels() {
           }
         }
         Set(panelGroup, wxT("NumberOfSwitches"), (long)switchRefN);
+
+        unsigned enclosureRefN = 0;
+
+        for (const auto &pair : instancesByEnclosureN) {
+          const unsigned enclosureN = pair.first;
+          const GOHauptwerkObject &instance = *pair.second;
+          const long imageSetId = instance.GetLong(WX_IMAGE_SET_ID);
+          const GOHauptwerkObject &imageSet = *imageSetById[imageSetId];
+          const auto stagesIt = stagesByImageSetId.find(imageSetId);
+
+          if (
+            stagesIt != stagesByImageSetId.end() && !stagesIt->second.empty()) {
+            const std::map<long, long> &stages = stagesIt->second;
+            /* GrandOrgue spreads its frames evenly over the travel of the
+             * shoe - it draws frame (n - 1) * value / 127 - where Hauptwerk
+             * gives each frame the highest value that frame covers. One frame
+             * more than there are stages is what makes the two line up: with
+             * Nancy's six stages, seven frames put every boundary on the
+             * value Hauptwerk puts it on. The top frame, which GrandOrgue
+             * shows only at the very top of the travel, repeats the last
+             * stage. */
+            const unsigned nFrames = (unsigned)std::min(
+              (size_t)MAX_ENCLOSURE_BITMAPS, stages.size() + 1);
+            std::vector<wxString> framePaths;
+            bool areAllFound = true;
+
+            for (unsigned frameI = 0; frameI < nFrames; frameI++) {
+              // The lowest shutter position GrandOrgue draws this frame at
+              const long nSteps = (long)nFrames - 1;
+              const long value = nSteps > 0
+                ? (MAX_MIDI_VALUE * (long)frameI + nSteps - 1) / nSteps
+                : 0;
+              auto stageIt = stages.lower_bound(value);
+
+              if (stageIt == stages.end())
+                stageIt = std::prev(stages.end());
+
+              const wxString path = ResolvePackagePath(
+                bitmapsBySetId[imageSetId][stageIt->second],
+                imageSet.GetLong(WX_INSTALLATION_PACKAGE_ID));
+
+              areAllFound = areAllFound && !path.IsEmpty();
+              framePaths.push_back(path);
+            }
+
+            /* All of them or none: GOGUIEnclosure refuses a set of frames
+             * that are not all the same size, and a missing one would be. */
+            if (areAllFound) {
+              const wxString elementGroup = panelGroup
+                + wxString::Format(wxT("Enclosure%03u"), enclosureN);
+              unsigned frameN = 0;
+
+              Set(
+                panelGroup,
+                wxString::Format(wxT("Enclosure%03u"), ++enclosureRefN),
+                (long)enclosureN);
+              for (const wxString &path : framePaths)
+                Set(
+                  elementGroup,
+                  wxString::Format(wxT("Bitmap%03u"), ++frameN),
+                  path);
+              Set(elementGroup, wxT("BitmapCount"), (long)nFrames);
+              Set(
+                elementGroup,
+                wxT("PositionX"),
+                instance.GetLong(wxT("LeftXPosPixels")));
+              Set(
+                elementGroup,
+                wxT("PositionY"),
+                instance.GetLong(wxT("TopYPosPixels")));
+              // The shoe is painted with whatever it says already
+              Set(elementGroup, wxT("TextBreakWidth"), 0L);
+              SetMouseRect(elementGroup, imageSet);
+            }
+          }
+        }
+        Set(panelGroup, wxT("NumberOfEnclosures"), (long)enclosureRefN);
       }
     }
     Set(WX_ORGAN, wxT("NumberOfPanels"), (long)panelN);
