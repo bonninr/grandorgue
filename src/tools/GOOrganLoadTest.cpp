@@ -26,6 +26,7 @@
 #include "loader/GOProgressMonitor.h"
 #include "model/GOManual.h"
 #include "model/GORank.h"
+#include "model/GOWindchest.h"
 
 #include "GOOrgan.h"
 #include "GOOrganController.h"
@@ -52,12 +53,18 @@ public:
     int result = 0;
     wxString organPath;
     wxString workDir;
+    bool isWindModel = false;
+    bool isNoVoicing = false;
 
     for (int i = 1; i < argc; i++) {
       const wxString arg = argv[i];
 
       if (arg == wxT("--work-dir") && i + 1 < argc)
         workDir = argv[++i];
+      else if (arg == wxT("--wind-model"))
+        isWindModel = true;
+      else if (arg == wxT("--no-voicing"))
+        isNoVoicing = true;
       else if (!arg.StartsWith(wxT("-")))
         organPath = arg;
     }
@@ -81,6 +88,10 @@ public:
       // Reading the samples would take minutes and is not what this checks;
       // the definition is either understood or it is not long before then.
       config.ManageCache(false);
+      // Set here rather than in the config file so a run states its own
+      // conditions and leaves nothing behind for the next one.
+      config.HauptwerkWindModel(isWindModel);
+      config.HauptwerkVoicing(!isNoVoicing);
 
       // True, not false: the panels are built during Load and reach for the
       // image cache, which only exists when the controller is told the
