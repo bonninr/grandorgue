@@ -72,6 +72,8 @@ static const long HW_LINK_DISENGAGE = 2;
 static const unsigned MAX_ODF_SWITCHES = 999;
 // GOOrganController reads NumberOfPanels with this as its upper bound
 static const unsigned MAX_ODF_PANELS = 100;
+// GOSoundingPipe reads either crossfade length with this as its upper bound
+static const long MAX_CROSSFADE_MS = 3000;
 // Hauptwerk combination type of a crescendo stage
 static const long HW_COMBINATION_CRESCENDO = 4;
 // Positions of GOSetter's crescendo pedal (CRESCENDO_STEPS there)
@@ -84,6 +86,15 @@ static const wxString WX_ODF_YES = wxT("Y");
 static const wxString WX_ODF_NO = wxT("N");
 
 /** Group name with the three-digit suffix GrandOrgue ODFs use. */
+/** One release sample, as the rank builder collects it before ordering. */
+struct GOHauptwerkRelease {
+  wxString path;
+  // How long the key may have been held for this release to be the one used
+  long maxKeyPressMs;
+  // How long to fade the release in over the tail of the attack
+  long crossfadeMs;
+};
+
 static wxString numbered(const wxString &prefix, unsigned n) {
   return wxString::Format(wxT("%s%03u"), prefix, n);
 }
@@ -168,11 +179,13 @@ void GOHauptwerkToOdf::FillReadFilter(
     WX_PIPE_ID,
     wxT("AmpLvl_LevelAdjustDecibels"),
     wxT("PitchLvl_DetuningPercentSemitones")};
-  outFilter[WX_ATTACK] = {WX_LAYER_ID, WX_SAMPLE_ID};
+  outFilter[WX_ATTACK]
+    = {WX_LAYER_ID, WX_SAMPLE_ID, wxT("LoopCrossfadeLengthInSrcSampleMs")};
   outFilter[WX_RELEASE] = {
     WX_LAYER_ID,
     WX_SAMPLE_ID,
-    wxT("ReleaseSelCriteria_LatestKeyReleaseTimeMs")};
+    wxT("ReleaseSelCriteria_LatestKeyReleaseTimeMs"),
+    wxT("ReleaseCrossfadeLengthMs")};
   outFilter[WX_SAMPLE] = {
     WX_SAMPLE_ID,
     wxT("InstallationPackageID"),
@@ -1167,7 +1180,7 @@ void GOHauptwerkToOdf::BuildRank(
     const wxString pipeKey = wxString::Format(wxT("Pipe%03u"), pipeI + 1);
     const auto layersIt = m_LayersByPipeId.find(pipe.GetLong(WX_PIPE_ID));
     wxString attackPath;
-    std::vector<std::pair<wxString, long>> releases;
+    std::vector<GOHauptwerkRelease> releases;
     // Voicing lives on the layer, and only the first layer is used, so the
     // first one that states a value is the one that counts.
     double gainDb = 0.0;
@@ -1175,6 +1188,8 @@ void GOHauptwerkToOdf::BuildRank(
     // The pitch the attack was recorded at, which is not the pitch the pipe
     // sounds wherever a rank is filled out by transposing another recording.
     double attackHz = 0.0;
+    // How long the loop takes to fade back over itself
+    long loopCrossfadeMs = 0;
     bool hasVoicing = false;
 
     if (layersIt != m_LayersByPipeId.end())
@@ -1202,6 +1217,8 @@ void GOHauptwerkToOdf::BuildRank(
                 pSample->Get(wxT("SampleFilename")),
                 pSample->GetLong(wxT("InstallationPackageID")));
               attackHz = wxAtof(pSample->Get(wxT("Pitch_ExactSamplePitch")));
+              loopCrossfadeMs
+                = pAttack->GetLong(wxT("LoopCrossfadeLengthInSrcSampleMs"), 0);
             }
           }
 
@@ -1218,10 +1235,11 @@ void GOHauptwerkToOdf::BuildRank(
                 pSample->GetLong(wxT("InstallationPackageID")));
 
               if (!path.IsEmpty())
-                releases.emplace_back(
-                  path,
-                  pRelease->GetLong(
-                    wxT("ReleaseSelCriteria_LatestKeyReleaseTimeMs"), -1));
+                releases.push_back(
+                  {path,
+                   pRelease->GetLong(
+                     wxT("ReleaseSelCriteria_LatestKeyReleaseTimeMs"), -1),
+                   pRelease->GetLong(wxT("ReleaseCrossfadeLengthMs"), 0)});
             }
           }
       }
@@ -1237,6 +1255,8 @@ void GOHauptwerkToOdf::BuildRank(
         = pipe.GetLong(wxT("Pitch_Tempered_RankBasePitch64ftHarmonicNum"), 0);
 
       Set(group, pipeKey, attackPath);
+      if (loopCrossfadeMs > 0 && loopCrossfadeMs <= MAX_CROSSFADE_MS)
+        Set(group, pipeKey + wxT("LoopCrossfadeLength"), loopCrossfadeMs);
       if (harmonic > 0)
         Set(group, pipeKey + wxT("HarmonicNumber"), harmonic);
 
@@ -1304,22 +1324,29 @@ void GOHauptwerkToOdf::BuildRank(
       std::sort(
         releases.begin(),
         releases.end(),
-        [](
-          const std::pair<wxString, long> &a,
-          const std::pair<wxString, long> &b) { return a.second < b.second; });
+        [](const GOHauptwerkRelease &a, const GOHauptwerkRelease &b) {
+          return a.maxKeyPressMs < b.maxKeyPressMs;
+        });
 
       Set(group, pipeKey + wxT("ReleaseCount"), (long)releases.size());
       for (unsigned nReleases = releases.size(), relI = 0; relI < nReleases;
            relI++) {
         const wxString relKey
           = wxString::Format(wxT("%sRelease%03u"), pipeKey, relI + 1);
-        const long maxKeyPressTime = releases[relI].second;
+        const GOHauptwerkRelease &release = releases[relI];
 
-        Set(group, relKey, releases[relI].first);
+        Set(group, relKey, release.path);
         if (
-          nReleases > 1 && maxKeyPressTime >= 0
-          && maxKeyPressTime < HW_UNLIMITED_KEY_PRESS_MS)
-          Set(group, relKey + wxT("MaxKeyPressTime"), maxKeyPressTime);
+          nReleases > 1 && release.maxKeyPressMs >= 0
+          && release.maxKeyPressMs < HW_UNLIMITED_KEY_PRESS_MS)
+          Set(group, relKey + wxT("MaxKeyPressTime"), release.maxKeyPressMs);
+        /* How long the release takes to fade in over the tail of the attack.
+         * Hauptwerk states it per release sample and GrandOrgue reads the
+         * same thing in the same unit; leaving it out made every release
+         * begin abruptly. */
+        if (release.crossfadeMs > 0 && release.crossfadeMs <= MAX_CROSSFADE_MS)
+          Set(
+            group, relKey + wxT("ReleaseCrossfadeLength"), release.crossfadeMs);
       }
     }
   }
