@@ -309,6 +309,7 @@ GOConfig::GOConfig(
     HauptwerkVoicing(this, GENERAL, wxT("HauptwerkVoicing"), true),
     HauptwerkTremulantModel(
       this, GENERAL, wxT("HauptwerkTremulantModel"), true),
+    HauptwerkConsole(this, GENERAL, wxT("HauptwerkConsole"), true),
     // Off by default: it is the only one of the three with a per-block cost.
     HauptwerkWindModel(this, GENERAL, wxT("HauptwerkWindModel"), false),
     HauptwerkSwitches(this, GENERAL, wxT("HauptwerkSwitches"), true),

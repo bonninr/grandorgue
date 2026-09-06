@@ -54,6 +54,9 @@ private:
   /* Whether to take the tremulant's shaping from the sample set rather than
    * leaving GrandOrgue's default. Load time only. */
   bool m_IsTremulantModelEnabled;
+  /* Whether to build Hauptwerk's own console from its artwork, as panels
+   * beside the generic one. Costs load time and memory for the images. */
+  bool m_IsConsoleEnabled;
   // Folder holding OrganDefinitions and OrganInstallationPackages
   wxString m_SampleSetPath;
   GOOdfEntries m_Entries;
@@ -165,6 +168,22 @@ private:
    * not the Hauptwerk console: those graphics are not reproduced.
    */
   void BuildDefaultConsole(unsigned nStops, unsigned nManuals);
+  /**
+   * Draws Hauptwerk's own console, one panel per display page, as extra
+   * panels beside the generic one. Beside rather than instead: the generic
+   * console is what keeps the organ playable if the artwork is missing.
+   */
+  void BuildPanels();
+  /** Writes the layout settings every panel, generic or not, has to carry. */
+  void SetConsoleMetrics(
+    const wxString &group,
+    unsigned nCols,
+    unsigned nRows,
+    unsigned screenWidth,
+    unsigned screenHeight,
+    bool hasTrimAboveManuals);
+  /** Writes where an image responds to a click, if it says. */
+  void SetMouseRect(const wxString &group, const GOHauptwerkObject &imageSet);
   /** Places one drawstop in the next free console cell. */
   void PlaceDrawstop(const wxString &group);
   /**
@@ -179,7 +198,7 @@ private:
    * @return the sample path relative to the OrganDefinitions folder, in the
    *   form GrandOrgue expects, or an empty string when the file is missing
    */
-  wxString ResolveSamplePath(
+  wxString ResolvePackagePath(
     const wxString &hwFileName, long installPackageId) const;
 
 public:
@@ -194,7 +213,8 @@ public:
     bool isVoicingEnabled = true,
     bool isWindModelEnabled = false,
     bool isSwitchesEnabled = true,
-    bool isTremulantModelEnabled = true);
+    bool isTremulantModelEnabled = true,
+    bool isConsoleEnabled = true);
 
   /** Runs the conversion. Safe to call once per instance. */
   void Build();

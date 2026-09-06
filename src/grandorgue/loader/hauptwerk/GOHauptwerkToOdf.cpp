@@ -40,6 +40,10 @@ static const wxString WX_SWITCH = wxT("Switch");
 static const wxString WX_SWITCH_LINKAGE = wxT("SwitchLinkage");
 static const wxString WX_COMBINATION = wxT("Combination");
 static const wxString WX_COMBINATION_ELEMENT = wxT("CombinationElement");
+static const wxString WX_DISPLAY_PAGE = wxT("DisplayPage");
+static const wxString WX_IMAGE_SET = wxT("ImageSet");
+static const wxString WX_IMAGE_SET_ELEMENT = wxT("ImageSetElement");
+static const wxString WX_IMAGE_SET_INSTANCE = wxT("ImageSetInstance");
 static const wxString WX_DIVISION_INPUT = wxT("DivisionInput");
 
 // Hauptwerk attribute names used in more than one place
@@ -52,6 +56,7 @@ static const wxString WX_STOP_ID = wxT("StopID");
 static const wxString WX_SWITCH_ID = wxT("SwitchID");
 static const wxString WX_CONTROLLING_SWITCH_ID = wxT("ControllingSwitchID");
 static const wxString WX_COMBINATION_ID = wxT("CombinationID");
+static const wxString WX_INSTALLATION_PACKAGE_ID = wxT("InstallationPackageID");
 static const wxString WX_DIVISION_ID = wxT("DivisionID");
 
 // Hauptwerk marks the release that catches every remaining key-press length
@@ -62,6 +67,8 @@ static const long HW_LINK_ENGAGE = 1;
 static const long HW_LINK_DISENGAGE = 2;
 // GOOrganModel reads NumberOfSwitches with this as its upper bound
 static const unsigned MAX_ODF_SWITCHES = 999;
+// GOOrganController reads NumberOfPanels with this as its upper bound
+static const unsigned MAX_ODF_PANELS = 100;
 // Hauptwerk combination type of a crescendo stage
 static const long HW_COMBINATION_CRESCENDO = 4;
 // Positions of GOSetter's crescendo pedal (CRESCENDO_STEPS there)
@@ -103,8 +110,34 @@ void GOHauptwerkToOdf::FillReadFilter(
   outFilter[WX_ENCLOSURE] = {};
   outFilter[WX_ENCLOSURE_PIPE] = {WX_PIPE_ID, wxT("EnclosureID")};
   outFilter[WX_KEY_ACTION] = {};
-  outFilter[WX_SWITCH]
-    = {WX_SWITCH_ID, WX_NAME, wxT("DefaultToEngaged"), wxT("Clickable")};
+  outFilter[WX_SWITCH] = {
+    WX_SWITCH_ID,
+    WX_NAME,
+    wxT("DefaultToEngaged"),
+    wxT("Clickable"),
+    wxT("Disp_ImageSetInstanceID"),
+    wxT("Disp_ImageSetIndexEngaged"),
+    wxT("Disp_ImageSetIndexDisengaged")};
+  outFilter[WX_DISPLAY_PAGE] = {wxT("PageID"), WX_NAME};
+  outFilter[WX_IMAGE_SET] = {
+    wxT("ImageSetID"),
+    WX_INSTALLATION_PACKAGE_ID,
+    wxT("ImageWidthPixels"),
+    wxT("ImageHeightPixels"),
+    wxT("ClickableAreaLeftRelativeXPosPixels"),
+    wxT("ClickableAreaRightRelativeXPosPixels"),
+    wxT("ClickableAreaTopRelativeYPosPixels"),
+    wxT("ClickableAreaBottomRelativeYPosPixels")};
+  outFilter[WX_IMAGE_SET_ELEMENT]
+    = {wxT("ImageSetID"), wxT("ImageIndexWithinSet"), wxT("BitmapFilename")};
+  outFilter[WX_IMAGE_SET_INSTANCE] = {
+    wxT("ImageSetInstanceID"),
+    wxT("ImageSetID"),
+    wxT("DefaultImageIndexWithinSet"),
+    wxT("DisplayPageID"),
+    wxT("ScreenLayerNumber"),
+    wxT("LeftXPosPixels"),
+    wxT("TopYPosPixels")};
   outFilter[WX_COMBINATION] = {WX_COMBINATION_ID, wxT("CombinationTypeCode")};
   outFilter[WX_COMBINATION_ELEMENT] = {
     WX_COMBINATION_ID,
@@ -144,12 +177,14 @@ GOHauptwerkToOdf::GOHauptwerkToOdf(
   bool isVoicingEnabled,
   bool isWindModelEnabled,
   bool isSwitchesEnabled,
-  bool isTremulantModelEnabled)
+  bool isTremulantModelEnabled,
+  bool isConsoleEnabled)
   : r_Odf(odf),
     m_IsVoicingEnabled(isVoicingEnabled),
     m_IsWindModelEnabled(isWindModelEnabled),
     m_IsSwitchesEnabled(isSwitchesEnabled),
     m_IsTremulantModelEnabled(isTremulantModelEnabled),
+    m_IsConsoleEnabled(isConsoleEnabled),
     m_SampleSetPath(sampleSetPath),
     m_DrawstopCols(12),
     m_DrawstopRows(12),
@@ -190,7 +225,7 @@ void GOHauptwerkToOdf::Warn(const wxString &message) {
     m_Warnings.push_back(_("... further warnings suppressed"));
 }
 
-wxString GOHauptwerkToOdf::ResolveSamplePath(
+wxString GOHauptwerkToOdf::ResolvePackagePath(
   const wxString &hwFileName, long installPackageId) const {
   wxString result;
 
@@ -571,6 +606,257 @@ void GOHauptwerkToOdf::BuildCrescendo() {
   }
 }
 
+void GOHauptwerkToOdf::SetConsoleMetrics(
+  const wxString &group,
+  unsigned nCols,
+  unsigned nRows,
+  unsigned screenWidth,
+  unsigned screenHeight,
+  bool hasTrimAboveManuals) {
+  Set(group, wxT("DispScreenSizeHoriz"), (long)screenWidth);
+  Set(group, wxT("DispScreenSizeVert"), (long)screenHeight);
+  Set(group, wxT("DispDrawstopCols"), (long)nCols);
+  Set(group, wxT("DispDrawstopRows"), (long)nRows);
+  Set(group, wxT("DispExtraDrawstopCols"), 6L);
+  Set(group, wxT("DispExtraDrawstopRows"), 5L);
+  Set(group, wxT("DispExtraDrawstopRowsAboveExtraButtonRows"), WX_ODF_YES);
+  Set(group, wxT("DispButtonCols"), 10L);
+  Set(group, wxT("DispExtraButtonRows"), 0L);
+  Set(group, wxT("DispButtonsAboveManuals"), WX_ODF_NO);
+  Set(group, wxT("DispDrawstopColsOffset"), WX_ODF_NO);
+  Set(group, wxT("DispDrawstopOuterColOffsetUp"), WX_ODF_NO);
+  Set(group, wxT("DispPairDrawstopCols"), WX_ODF_NO);
+  Set(group, wxT("DispExtraPedalButtonRow"), WX_ODF_NO);
+  Set(group, wxT("DispExtraPedalButtonRowOffset"), WX_ODF_NO);
+  Set(group, wxT("DispExtraPedalButtonRowOffsetRight"), WX_ODF_NO);
+  Set(
+    group,
+    wxT("DispTrimAboveManuals"),
+    hasTrimAboveManuals ? WX_ODF_YES : WX_ODF_NO);
+  Set(group, wxT("DispTrimBelowManuals"), WX_ODF_NO);
+  Set(group, wxT("DispTrimAboveExtraRows"), WX_ODF_NO);
+  Set(group, wxT("DispControlLabelFont"), wxT("Arial"));
+  Set(group, wxT("DispGroupLabelFont"), wxT("Arial"));
+  Set(group, wxT("DispShortcutKeyLabelFont"), wxT("Arial"));
+  Set(group, wxT("DispShortcutKeyLabelColour"), wxT("Black"));
+  Set(group, wxT("DispConsoleBackgroundImageNum"), 1L);
+  Set(group, wxT("DispDrawstopBackgroundImageNum"), 1L);
+  Set(group, wxT("DispDrawstopInsetBackgroundImageNum"), 1L);
+  Set(group, wxT("DispKeyHorizBackgroundImageNum"), 1L);
+  Set(group, wxT("DispKeyVertBackgroundImageNum"), 1L);
+}
+
+void GOHauptwerkToOdf::BuildPanels() {
+  /* Hauptwerk's own console, drawn from its own artwork, as extra panels
+   * beside the generic one this converter always lays out. Beside rather than
+   * instead: a panel that cannot find its images is a panel with nothing to
+   * click, and the generic console is what keeps the organ playable. */
+  if (m_IsConsoleEnabled && !m_SwitchComponents.empty()) {
+    std::unordered_map<long, const GOHauptwerkObject *> imageSetById;
+    std::unordered_map<long, const GOHauptwerkObject *> instanceById;
+    // image set -> index within the set -> the file holding that image
+    std::unordered_map<long, std::map<long, wxString>> bitmapsBySetId;
+    // Hauptwerk switch -> the switch number the component it fell into got
+    std::unordered_map<long, unsigned> switchNByHwId = m_SwitchNumberByHwId;
+    unsigned panelN = 0;
+
+    for (const GOHauptwerkObject &imageSet : r_Odf.GetObjects(WX_IMAGE_SET))
+      imageSetById[imageSet.GetLong(wxT("ImageSetID"))] = &imageSet;
+    for (const GOHauptwerkObject &element :
+         r_Odf.GetObjects(WX_IMAGE_SET_ELEMENT))
+      bitmapsBySetId[element.GetLong(wxT("ImageSetID"))]
+                    [element.GetLong(wxT("ImageIndexWithinSet"))]
+        = element.Get(wxT("BitmapFilename"));
+    for (const GOHauptwerkObject &instance :
+         r_Odf.GetObjects(WX_IMAGE_SET_INSTANCE))
+      instanceById[instance.GetLong(wxT("ImageSetInstanceID"))] = &instance;
+
+    /* Which instance draws which switch, and in which of its images. One
+     * drawstop is several switches in Hauptwerk - the stop, its picture on
+     * the console, its picture on the jamb - and they were condensed into one
+     * switch here, so the same switch is drawn on several pages, which is
+     * what Hauptwerk does too. */
+    std::unordered_map<long, const GOHauptwerkObject *> switchByInstanceId;
+
+    for (const GOHauptwerkObject &hwSwitch : r_Odf.GetObjects(WX_SWITCH)) {
+      const long instanceId = hwSwitch.GetLong(wxT("Disp_ImageSetInstanceID"));
+
+      if (
+        instanceId != 0
+        && switchNByHwId.find(hwSwitch.GetLong(WX_SWITCH_ID))
+          != switchNByHwId.end())
+        switchByInstanceId[instanceId] = &hwSwitch;
+    }
+
+    for (const GOHauptwerkObject &page : r_Odf.GetObjects(WX_DISPLAY_PAGE)) {
+      const long pageId = page.GetLong(wxT("PageID"));
+      // Ordered so the panel comes out the same way every time it is built
+      std::map<long, const GOHauptwerkObject *> backgroundsByOrder;
+      std::map<unsigned, const GOHauptwerkObject *> instancesBySwitchN;
+      unsigned screenWidth = 0;
+      unsigned screenHeight = 0;
+      unsigned instanceOrder = 0;
+
+      for (const GOHauptwerkObject &instance :
+           r_Odf.GetObjects(WX_IMAGE_SET_INSTANCE)) {
+        instanceOrder++;
+        if (instance.GetLong(wxT("DisplayPageID")) == pageId) {
+          const auto imageSetIt
+            = imageSetById.find(instance.GetLong(wxT("ImageSetID")));
+          const auto switchIt = switchByInstanceId.find(
+            instance.GetLong(wxT("ImageSetInstanceID")));
+
+          if (imageSetIt != imageSetById.end()) {
+            const unsigned right
+              = (unsigned)(instance.GetLong(wxT("LeftXPosPixels"))
+                           + imageSetIt->second->GetLong(
+                             wxT("ImageWidthPixels")));
+            const unsigned bottom
+              = (unsigned)(instance.GetLong(wxT("TopYPosPixels"))
+                           + imageSetIt->second->GetLong(
+                             wxT("ImageHeightPixels")));
+
+            if (right > screenWidth)
+              screenWidth = right;
+            if (bottom > screenHeight)
+              screenHeight = bottom;
+            if (switchIt != switchByInstanceId.end())
+              instancesBySwitchN[switchNByHwId[switchIt->second->GetLong(
+                WX_SWITCH_ID)]]
+                = &instance;
+            else
+              /* Everything that is not a control is the picture of the
+               * console. Keyed on the layer Hauptwerk gives it so the panel
+               * is painted back to front, and on the order it was stated in
+               * to keep two things on one layer apart. */
+              backgroundsByOrder
+                [instance.GetLong(wxT("ScreenLayerNumber")) * 100000
+                 + instanceOrder]
+                = &instance;
+          }
+        }
+      }
+
+      // A page with nothing to click is Hauptwerk's own settings or about
+      // screen, which has no meaning here.
+      if (!instancesBySwitchN.empty() && panelN < MAX_ODF_PANELS) {
+        const wxString panelGroup = numbered(wxT("Panel"), ++panelN);
+        unsigned imageN = 0;
+        unsigned switchRefN = 0;
+
+        Set(panelGroup, WX_NAME, page.Get(WX_NAME));
+        Set(panelGroup, wxT("Group"), _("Hauptwerk console"));
+        Set(panelGroup, wxT("HasPedals"), WX_ODF_NO);
+        /* Nothing on this panel is laid out on the grid - every control
+         * is placed at the pixel Hauptwerk put it at - but the grid is
+         * still read, so it is given the smallest legal one. */
+        SetConsoleMetrics(panelGroup, 2, 1, screenWidth, screenHeight, false);
+        for (const wxString &key :
+             {wxT("NumberOfEnclosures"),
+              wxT("NumberOfTremulants"),
+              wxT("NumberOfDivisionalCouplers"),
+              wxT("NumberOfGenerals"),
+              wxT("NumberOfReversiblePistons"),
+              wxT("NumberOfManuals"),
+              wxT("NumberOfCouplers"),
+              wxT("NumberOfStops"),
+              wxT("NumberOfDivisionals"),
+              wxT("NumberOfLabels")})
+          Set(panelGroup, key, 0L);
+
+        for (const auto &pair : backgroundsByOrder) {
+          const GOHauptwerkObject &instance = *pair.second;
+          const GOHauptwerkObject &imageSet
+            = *imageSetById[instance.GetLong(wxT("ImageSetID"))];
+          const wxString path = ResolvePackagePath(
+            bitmapsBySetId[instance.GetLong(wxT("ImageSetID"))]
+                          [instance.GetLong(wxT("DefaultImageIndexWithinSet"))],
+            imageSet.GetLong(WX_INSTALLATION_PACKAGE_ID));
+
+          if (!path.IsEmpty()) {
+            const wxString imageGroup
+              = panelGroup + wxString::Format(wxT("Image%03u"), ++imageN);
+
+            Set(imageGroup, wxT("Image"), path);
+            Set(
+              imageGroup,
+              wxT("PositionX"),
+              instance.GetLong(wxT("LeftXPosPixels")));
+            Set(
+              imageGroup,
+              wxT("PositionY"),
+              instance.GetLong(wxT("TopYPosPixels")));
+          }
+        }
+        Set(panelGroup, wxT("NumberOfImages"), (long)imageN);
+
+        for (const auto &pair : instancesBySwitchN) {
+          const unsigned switchN = pair.first;
+          const GOHauptwerkObject &instance = *pair.second;
+          const GOHauptwerkObject &hwSwitch
+            = *switchByInstanceId[instance.GetLong(wxT("ImageSetInstanceID"))];
+          const long imageSetId = instance.GetLong(wxT("ImageSetID"));
+          const GOHauptwerkObject &imageSet = *imageSetById[imageSetId];
+          const wxString onPath = ResolvePackagePath(
+            bitmapsBySetId[imageSetId]
+                          [hwSwitch.GetLong(wxT("Disp_ImageSetIndexEngaged"))],
+            imageSet.GetLong(WX_INSTALLATION_PACKAGE_ID));
+          const wxString offPath = ResolvePackagePath(
+            bitmapsBySetId[imageSetId][hwSwitch.GetLong(
+              wxT("Disp_ImageSetIndexDisengaged"))],
+            imageSet.GetLong(WX_INSTALLATION_PACKAGE_ID));
+
+          if (!onPath.IsEmpty() && !offPath.IsEmpty()) {
+            const wxString elementGroup
+              = panelGroup + wxString::Format(wxT("Switch%03u"), switchN);
+
+            Set(
+              panelGroup,
+              wxString::Format(wxT("Switch%03u"), ++switchRefN),
+              (long)switchN);
+            Set(elementGroup, wxT("ImageOn"), onPath);
+            Set(elementGroup, wxT("ImageOff"), offPath);
+            Set(
+              elementGroup,
+              wxT("PositionX"),
+              instance.GetLong(wxT("LeftXPosPixels")));
+            Set(
+              elementGroup,
+              wxT("PositionY"),
+              instance.GetLong(wxT("TopYPosPixels")));
+            /* The drawstop's name is painted into the artwork already, so
+             * GrandOrgue must not write it over the top. */
+            Set(elementGroup, wxT("TextBreakWidth"), 0L);
+            SetMouseRect(elementGroup, imageSet);
+          }
+        }
+        Set(panelGroup, wxT("NumberOfSwitches"), (long)switchRefN);
+      }
+    }
+    Set(WX_ORGAN, wxT("NumberOfPanels"), (long)panelN);
+  }
+}
+
+void GOHauptwerkToOdf::SetMouseRect(
+  const wxString &group, const GOHauptwerkObject &imageSet) {
+  /* Where the image responds to a click. Hauptwerk gives the edges relative
+   * to the image, GrandOrgue an offset and a size. */
+  const long left
+    = imageSet.GetLong(wxT("ClickableAreaLeftRelativeXPosPixels"));
+  const long top = imageSet.GetLong(wxT("ClickableAreaTopRelativeYPosPixels"));
+  const long right
+    = imageSet.GetLong(wxT("ClickableAreaRightRelativeXPosPixels"));
+  const long bottom
+    = imageSet.GetLong(wxT("ClickableAreaBottomRelativeYPosPixels"));
+
+  if (right > left && bottom > top) {
+    Set(group, wxT("MouseRectLeft"), left);
+    Set(group, wxT("MouseRectTop"), top);
+    Set(group, wxT("MouseRectWidth"), right - left);
+    Set(group, wxT("MouseRectHeight"), bottom - top);
+  }
+}
+
 void GOHauptwerkToOdf::BuildSwitches() {
   unsigned switchN = 0;
 
@@ -842,7 +1128,7 @@ void GOHauptwerkToOdf::BuildRank(
               WX_SAMPLE, WX_SAMPLE_ID, pAttack->GetLong(WX_SAMPLE_ID));
 
             if (pSample && attackPath.IsEmpty())
-              attackPath = ResolveSamplePath(
+              attackPath = ResolvePackagePath(
                 pSample->Get(wxT("SampleFilename")),
                 pSample->GetLong(wxT("InstallationPackageID")));
           }
@@ -855,7 +1141,7 @@ void GOHauptwerkToOdf::BuildRank(
               WX_SAMPLE, WX_SAMPLE_ID, pRelease->GetLong(WX_SAMPLE_ID));
 
             if (pSample) {
-              const wxString path = ResolveSamplePath(
+              const wxString path = ResolvePackagePath(
                 pSample->Get(wxT("SampleFilename")),
                 pSample->GetLong(wxT("InstallationPackageID")));
 
@@ -1348,4 +1634,5 @@ void GOHauptwerkToOdf::Build() {
   BuildCouplers();
   BuildTremulants();
   BuildEnclosures();
+  BuildPanels();
 }

@@ -138,6 +138,7 @@ public:
   // afford it, and the organ still plays without any of them.
   GOSettingBool HauptwerkVoicing;
   GOSettingBool HauptwerkTremulantModel;
+  GOSettingBool HauptwerkConsole;
   GOSettingBool HauptwerkWindModel;
   /* Whether to build the console controls from Hauptwerk's switch graph.
    * Costs only load time, but it decides what the console shows, so it is

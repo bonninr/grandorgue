@@ -27,6 +27,8 @@
 #include "model/GOManual.h"
 #include "model/GORank.h"
 #include "model/GOSwitch.h"
+
+#include "gui/panels/GOGUIPanel.h"
 #include "model/GOWindchest.h"
 
 #include "GOOrgan.h"
@@ -58,6 +60,7 @@ public:
     bool isNoVoicing = false;
     bool isNoSwitches = false;
     bool isNoTremulantModel = false;
+    bool isNoConsole = false;
 
     for (int i = 1; i < argc; i++) {
       const wxString arg = argv[i];
@@ -72,6 +75,8 @@ public:
         isNoSwitches = true;
       else if (arg == wxT("--no-tremulant-model"))
         isNoTremulantModel = true;
+      else if (arg == wxT("--no-console"))
+        isNoConsole = true;
       else if (!arg.StartsWith(wxT("-")))
         organPath = arg;
     }
@@ -101,6 +106,7 @@ public:
       config.HauptwerkVoicing(!isNoVoicing);
       config.HauptwerkSwitches(!isNoSwitches);
       config.HauptwerkTremulantModel(!isNoTremulantModel);
+      config.HauptwerkConsole(!isNoConsole);
 
       // True, not false: the panels are built during Load and reach for the
       // image cache, which only exists when the controller is told the
@@ -184,6 +190,12 @@ public:
         }
         std::cout << "  switches drawn: " << nDrawnSwitches
                   << ", derived: " << nDerivedSwitches << "\n";
+
+        for (unsigned n = controller.GetPanelCount(), panelI = 0; panelI < n;
+             panelI++)
+          std::cout << "  panel " << panelI << " : "
+                    << controller.GetPanel(panelI)->GetName().ToUTF8().data()
+                    << "\n";
       }
       controller.Clear();
     }
