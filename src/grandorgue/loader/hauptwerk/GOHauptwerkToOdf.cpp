@@ -233,7 +233,10 @@ void GOHauptwerkToOdf::BuildManuals() {
     Set(group, wxT("NumberOfDivisionals"), 0L);
     Set(group, wxT("NumberOfTremulants"), 0L);
     Set(group, wxT("NumberOfSwitches"), 0L);
-    Set(group, wxT("Displayed"), WX_ODF_NO);
+    // GrandOrgue always builds its own main panel, whatever NumberOfPanels
+    // says, so the manuals have to be marked displayed or that panel comes up
+    // without a keyboard on it.
+    Set(group, wxT("Displayed"), WX_ODF_YES);
     // filled by BuildStops
     Set(group, wxT("NumberOfStops"), 0L);
   }
@@ -441,6 +444,59 @@ void GOHauptwerkToOdf::BuildStops() {
   Set(WX_ORGAN, wxT("NumberOfStops"), (long)stopN);
 }
 
+void GOHauptwerkToOdf::BuildDefaultConsole(unsigned nStops, unsigned nManuals) {
+  // GrandOrgue draws its own console whatever NumberOfPanels says, but it
+  // lays it out from these settings, and their defaults assume a small organ.
+  // A set with 140 stops gets a console with nowhere to put them unless the
+  // grid is sized here. The Hauptwerk console graphics are not reproduced -
+  // this is GrandOrgue's own generic layout, sized to fit.
+  const unsigned nCols = 12;
+  // Two drawstop columns flank each side of the manuals, so the grid holds
+  // roughly nCols * nRows; round the rows up and leave a margin.
+  unsigned nRows = (nStops + nCols - 1) / nCols + 2;
+
+  if (nRows < 8)
+    nRows = 8;
+  if (nRows > 20)
+    nRows = 20;
+
+  Set(WX_ORGAN, wxT("DispScreenSizeHoriz"), wxT("1900"));
+  Set(WX_ORGAN, wxT("DispScreenSizeVert"), wxT("980"));
+  Set(WX_ORGAN, wxT("DispDrawstopCols"), (long)nCols);
+  Set(WX_ORGAN, wxT("DispDrawstopRows"), (long)nRows);
+  Set(WX_ORGAN, wxT("DispExtraDrawstopCols"), 6L);
+  Set(WX_ORGAN, wxT("DispExtraDrawstopRows"), 5L);
+  Set(WX_ORGAN, wxT("DispExtraDrawstopRowsAboveExtraButtonRows"), WX_ODF_YES);
+  Set(WX_ORGAN, wxT("DispButtonCols"), 10L);
+  Set(WX_ORGAN, wxT("DispExtraButtonRows"), 0L);
+  Set(WX_ORGAN, wxT("DispButtonsAboveManuals"), WX_ODF_NO);
+  Set(WX_ORGAN, wxT("DispDrawstopColsOffset"), WX_ODF_NO);
+  Set(WX_ORGAN, wxT("DispDrawstopOuterColOffsetUp"), WX_ODF_NO);
+  Set(WX_ORGAN, wxT("DispPairDrawstopCols"), WX_ODF_NO);
+  Set(WX_ORGAN, wxT("DispExtraPedalButtonRow"), WX_ODF_NO);
+  Set(WX_ORGAN, wxT("DispExtraPedalButtonRowOffset"), WX_ODF_NO);
+  Set(WX_ORGAN, wxT("DispExtraPedalButtonRowOffsetRight"), WX_ODF_NO);
+  Set(WX_ORGAN, wxT("DispTrimAboveManuals"), nManuals > 1 ? WX_ODF_YES : WX_ODF_NO);
+  Set(WX_ORGAN, wxT("DispTrimBelowManuals"), WX_ODF_NO);
+  Set(WX_ORGAN, wxT("DispTrimAboveExtraRows"), WX_ODF_NO);
+  Set(WX_ORGAN, wxT("DispControlLabelFont"), wxT("Arial"));
+  Set(WX_ORGAN, wxT("DispGroupLabelFont"), wxT("Arial"));
+  Set(WX_ORGAN, wxT("DispShortcutKeyLabelFont"), wxT("Arial"));
+  Set(WX_ORGAN, wxT("DispShortcutKeyLabelColour"), wxT("Black"));
+  Set(WX_ORGAN, wxT("DispConsoleBackgroundImageNum"), 1L);
+  Set(WX_ORGAN, wxT("DispDrawstopBackgroundImageNum"), 1L);
+  Set(WX_ORGAN, wxT("DispDrawstopInsetBackgroundImageNum"), 1L);
+  Set(WX_ORGAN, wxT("DispKeyHorizBackgroundImageNum"), 1L);
+  Set(WX_ORGAN, wxT("DispKeyVertBackgroundImageNum"), 1L);
+  Set(WX_ORGAN, wxT("CombinationsStoreNonDisplayedDrawstops"), WX_ODF_NO);
+  Set(WX_ORGAN, wxT("NumberOfImages"), 0L);
+  Set(WX_ORGAN, wxT("NumberOfLabels"), 0L);
+  Set(WX_ORGAN, wxT("InfoFilename"), wxEmptyString);
+  Set(WX_ORGAN, wxT("AmplitudeLevel"), 100L);
+  Set(WX_ORGAN, wxT("Gain"), 0L);
+  Set(WX_ORGAN, wxT("PitchTuning"), 0L);
+}
+
 void GOHauptwerkToOdf::Build() {
   BuildIndexes();
   BuildOrgan();
@@ -448,4 +504,7 @@ void GOHauptwerkToOdf::Build() {
   BuildManuals();
   BuildRanks();
   BuildStops();
+  BuildDefaultConsole(
+    (unsigned)r_Odf.GetObjectCount(WX_STOP),
+    (unsigned)r_Odf.GetObjectCount(WX_DIVISION));
 }

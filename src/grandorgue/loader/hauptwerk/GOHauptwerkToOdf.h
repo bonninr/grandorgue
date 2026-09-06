@@ -75,6 +75,13 @@ private:
   void BuildRanks();
   void BuildStops();
   void BuildRank(const GOHauptwerkObject &rank, unsigned rankN);
+  /**
+   * Size GrandOrgue's own console. It is drawn whatever NumberOfPanels says,
+   * but from settings whose defaults assume a small organ, so a large set
+   * needs the grid sized explicitly or the stops have nowhere to go. This is
+   * not the Hauptwerk console: those graphics are not reproduced.
+   */
+  void BuildDefaultConsole(unsigned nStops, unsigned nManuals);
 
   /**
    * @return the sample path relative to the OrganDefinitions folder, in the
