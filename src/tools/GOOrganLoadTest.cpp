@@ -28,7 +28,6 @@
 #include "model/GORank.h"
 #include "model/GOSwitch.h"
 #include "model/GOWindchest.h"
-#include "model/GOWindchest.h"
 
 #include "GOOrgan.h"
 #include "GOOrganController.h"
@@ -109,15 +108,16 @@ public:
       GOOrganController controller(config, true);
       GOOrgan organ(organPath);
       GOSilentProgress monitor;
-      const wxString errMsg = controller.Load(organ, wxEmptyString, true, monitor);
+      const wxString errMsg
+        = controller.Load(organ, wxEmptyString, true, monitor);
 
       if (!errMsg.IsEmpty()) {
         std::cout << "LOAD FAILED: " << errMsg.ToUTF8().data() << "\n";
         result = 1;
       } else {
         std::cout << "LOAD OK\n";
-        std::cout << "  organ    : " << controller.GetOrganName().ToUTF8().data()
-                  << "\n";
+        std::cout << "  organ    : "
+                  << controller.GetOrganName().ToUTF8().data() << "\n";
         std::cout << "  manuals  : " << controller.GetManualAndPedalCount()
                   << " (first " << controller.GetFirstManualIndex() << ")\n";
         std::cout << "  ranks    : " << controller.GetODFRankCount() << "\n";
@@ -147,10 +147,8 @@ public:
         }
         std::cout << "  stops    : " << nStops << "\n";
         std::cout << "  couplers : " << nCouplers << "\n";
-        std::cout << "  voicing  : " << (isNoVoicing ? "off" : "on")
-                  << "\n";
-        std::cout << "  windmodel: " << (isWindModel ? "on" : "off")
-                  << "\n";
+        std::cout << "  voicing  : " << (isNoVoicing ? "off" : "on") << "\n";
+        std::cout << "  windmodel: " << (isWindModel ? "on" : "off") << "\n";
 
         unsigned nWindLimited = 0;
 
@@ -167,8 +165,7 @@ public:
         unsigned nDrawnSwitches = 0;
         unsigned nDerivedSwitches = 0;
 
-        for (unsigned n = controller.GetSwitchCount(), switchI = 0;
-             switchI < n;
+        for (unsigned n = controller.GetSwitchCount(), switchI = 0; switchI < n;
              switchI++) {
           const GOSwitch *pSwitch = controller.GetSwitch(switchI);
 

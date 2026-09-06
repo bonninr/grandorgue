@@ -484,8 +484,9 @@ void GOSoundingPipe::SetWaveTremulant(bool on) {
 }
 
 void GOSoundingPipe::ReportWindDemand(float flow) {
-  if (flow != 0 && p_OrganModel && m_WindchestN >= 1
-      && m_WindchestN <= p_OrganModel->GetWindchestCount()) {
+  if (
+    flow != 0 && p_OrganModel && m_WindchestN >= 1
+    && m_WindchestN <= p_OrganModel->GetWindchestCount()) {
     GOWindchest *pWindchest = p_OrganModel->GetWindchest(m_WindchestN - 1);
 
     if (pWindchest)

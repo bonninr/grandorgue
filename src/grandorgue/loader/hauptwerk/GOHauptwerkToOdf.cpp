@@ -92,8 +92,7 @@ void GOHauptwerkToOdf::FillReadFilter(
   outFilter[WX_KEY_ACTION] = {};
   outFilter[WX_SWITCH]
     = {WX_SWITCH_ID, WX_NAME, wxT("DefaultToEngaged"), wxT("Clickable")};
-  outFilter[WX_COMBINATION]
-    = {WX_COMBINATION_ID, wxT("CombinationTypeCode")};
+  outFilter[WX_COMBINATION] = {WX_COMBINATION_ID, wxT("CombinationTypeCode")};
   outFilter[WX_COMBINATION_ELEMENT] = {
     WX_COMBINATION_ID,
     wxT("ControlledSwitchID"),
@@ -103,8 +102,7 @@ void GOHauptwerkToOdf::FillReadFilter(
     wxT("DestSwitchID"),
     wxT("EngageLinkActionCode"),
     wxT("DisengageLinkActionCode")};
-  outFilter[WX_DIVISION_INPUT]
-    = {WX_DIVISION_ID, wxT("NormalMIDINoteNumber")};
+  outFilter[WX_DIVISION_INPUT] = {WX_DIVISION_ID, wxT("NormalMIDINoteNumber")};
   outFilter[WX_PIPE] = {
     WX_PIPE_ID,
     WX_RANK_ID,
@@ -191,10 +189,10 @@ wxString GOHauptwerkToOdf::ResolveSamplePath(
     while (relative.StartsWith(wxT("/")))
       relative = relative.Mid(1);
 
-    const wxString packageDir
-      = wxString::Format(wxT("OrganInstallationPackages/%06ld"), installPackageId);
-    const wxString full = m_SampleSetPath + wxT("/") + packageDir + wxT("/")
-      + relative;
+    const wxString packageDir = wxString::Format(
+      wxT("OrganInstallationPackages/%06ld"), installPackageId);
+    const wxString full
+      = m_SampleSetPath + wxT("/") + packageDir + wxT("/") + relative;
 
     // Hauptwerk sets are authored on Windows, so the case recorded in the
     // definition need not match the case on disk. That is harmless there and
@@ -513,8 +511,7 @@ void GOHauptwerkToOdf::BuildCrescendo() {
           : 0;
         const wxString group
           = wxString::Format(wxT("SetterCrescendo1_%03u"), stepN);
-        const auto elementsIt
-          = elementsByCombinationId.find(stageIds[stageI]);
+        const auto elementsIt = elementsByCombinationId.find(stageIds[stageI]);
         std::set<unsigned> engagedSwitchNs;
         std::set<unsigned> releasedSwitchNs;
 
@@ -720,8 +717,7 @@ void GOHauptwerkToOdf::BuildManuals() {
 
     // The extended range exists for couplers, not for fingers, so the player
     // gets the conventional compass and the rest stays reachable by coupling.
-    const long nAccessibleKeys
-      = std::min(nLogicalKeys, isPedal ? 32L : 61L);
+    const long nAccessibleKeys = std::min(nLogicalKeys, isPedal ? 32L : 61L);
 
     m_ManualNumberByDivisionId[divisionId] = number;
     Set(group, WX_NAME, division.Get(WX_NAME));
@@ -859,8 +855,8 @@ void GOHauptwerkToOdf::BuildRank(
         Set(group, pipeKey + wxT("HarmonicNumber"), harmonic);
 
       if (m_IsWindModelEnabled) {
-        const double flow = wxAtof(pipe.Get(
-          wxT("WindSupply_MassFlowRateKilogramsPerSecAtReferencePressureDiff")));
+        const double flow = wxAtof(pipe.Get(wxT(
+          "WindSupply_MassFlowRateKilogramsPerSecAtReferencePressureDiff")));
 
         if (flow > 0)
           Set(
@@ -878,8 +874,7 @@ void GOHauptwerkToOdf::BuildRank(
           = wxAtof(pipe.Get(wxT("Pitch_OriginalOrgan_PitchHz")));
 
         if (recordedHz > 8.0) {
-          const double midiExact
-            = 69.0 + 12.0 * std::log2(recordedHz / 440.0);
+          const double midiExact = 69.0 + 12.0 * std::log2(recordedHz / 440.0);
           const double midiKey = std::floor(midiExact);
           const double fraction = (midiExact - midiKey) * 100.0;
 
@@ -911,8 +906,9 @@ void GOHauptwerkToOdf::BuildRank(
       std::sort(
         releases.begin(),
         releases.end(),
-        [](const std::pair<wxString, long> &a,
-           const std::pair<wxString, long> &b) { return a.second < b.second; });
+        [](
+          const std::pair<wxString, long> &a,
+          const std::pair<wxString, long> &b) { return a.second < b.second; });
 
       Set(group, pipeKey + wxT("ReleaseCount"), (long)releases.size());
       for (unsigned nReleases = releases.size(), relI = 0; relI < nReleases;
@@ -1032,7 +1028,6 @@ void GOHauptwerkToOdf::BuildStops() {
   Set(WX_ORGAN, wxT("NumberOfStops"), (long)stopN);
 }
 
-
 void GOHauptwerkToOdf::BuildCouplers() {
   // Hauptwerk states a key action between keyboards; GrandOrgue states a
   // coupler on the source manual naming the destination one. Keyboards carry
@@ -1078,8 +1073,7 @@ void GOHauptwerkToOdf::BuildCouplers() {
       Set(group, wxT("CoupleToSubsequentUpwardIntramanualCouplers"), WX_ODF_NO);
       Set(
         group, wxT("CoupleToSubsequentDownwardIntramanualCouplers"), WX_ODF_NO);
-      if (!ControlByHwSwitch(
-            group, action.GetLong(wxT("ConditionSwitchID")))) {
+      if (!ControlByHwSwitch(group, action.GetLong(wxT("ConditionSwitchID")))) {
         Set(group, wxT("Displayed"), WX_ODF_YES);
         Set(group, wxT("DefaultToEngaged"), WX_ODF_NO);
         PlaceDrawstop(group);
@@ -1115,11 +1109,12 @@ unsigned GOHauptwerkToOdf::GetTremulantDepth() const {
       nLayers++;
     }
     if (nLayers > 0 && totalAdjustDb != 0.0) {
-      const double adjusted = DEFAULT_TREMULANT_DEPTH
-        * pow(10.0, totalAdjustDb / nLayers / 20.0);
+      const double adjusted
+        = DEFAULT_TREMULANT_DEPTH * pow(10.0, totalAdjustDb / nLayers / 20.0);
 
       // GOTremulant reads AmpModDepth as a percentage between 1 and 100
-      depth = adjusted < 1.0 ? 1 : (adjusted > 100.0 ? 100 : (unsigned)adjusted);
+      depth
+        = adjusted < 1.0 ? 1 : (adjusted > 100.0 ? 100 : (unsigned)adjusted);
     }
   }
   return depth;
@@ -1139,9 +1134,7 @@ void GOHauptwerkToOdf::BuildTremulants() {
     Set(group, wxT("Period"), periodMs);
     Set(group, wxT("AmpModDepth"), (long)GetTremulantDepth());
     Set(
-      group,
-      wxT("StartRate"),
-      tremulant.GetLong(wxT("StartRatePercent"), 30));
+      group, wxT("StartRate"), tremulant.GetLong(wxT("StartRatePercent"), 30));
     Set(group, wxT("StopRate"), tremulant.GetLong(wxT("StopRatePercent"), 30));
     if (!ControlByHwSwitch(
           group, tremulant.GetLong(WX_CONTROLLING_SWITCH_ID))) {
@@ -1178,11 +1171,12 @@ void GOHauptwerkToOdf::BuildEnclosures() {
       = m_WindchestNumberById.count(
           pipe.GetLong(wxT("WindSupply_SourceWindCompartmentID")))
       ? m_WindchestNumberById[pipe.GetLong(
-          wxT("WindSupply_SourceWindCompartmentID"))]
+        wxT("WindSupply_SourceWindCompartmentID"))]
       : 1;
 
   for (const GOHauptwerkObject &ep : r_Odf.GetObjects(WX_ENCLOSURE_PIPE)) {
-    const auto encIt = m_EnclosureNumberById.find(ep.GetLong(wxT("EnclosureID")));
+    const auto encIt
+      = m_EnclosureNumberById.find(ep.GetLong(wxT("EnclosureID")));
     const auto wcIt = m_WindchestNumberByPipeId.find(ep.GetLong(WX_PIPE_ID));
 
     if (
@@ -1251,7 +1245,10 @@ void GOHauptwerkToOdf::BuildDefaultConsole(unsigned nStops, unsigned nManuals) {
   Set(WX_ORGAN, wxT("DispExtraPedalButtonRow"), WX_ODF_NO);
   Set(WX_ORGAN, wxT("DispExtraPedalButtonRowOffset"), WX_ODF_NO);
   Set(WX_ORGAN, wxT("DispExtraPedalButtonRowOffsetRight"), WX_ODF_NO);
-  Set(WX_ORGAN, wxT("DispTrimAboveManuals"), nManuals > 1 ? WX_ODF_YES : WX_ODF_NO);
+  Set(
+    WX_ORGAN,
+    wxT("DispTrimAboveManuals"),
+    nManuals > 1 ? WX_ODF_YES : WX_ODF_NO);
   Set(WX_ORGAN, wxT("DispTrimBelowManuals"), WX_ODF_NO);
   Set(WX_ORGAN, wxT("DispTrimAboveExtraRows"), WX_ODF_NO);
   Set(WX_ORGAN, wxT("DispControlLabelFont"), wxT("Arial"));
