@@ -19,6 +19,9 @@
 static const wxString WX_GENERAL = wxT("_General");
 static const wxString WX_DIVISION = wxT("Division");
 static const wxString WX_KEYBOARD = wxT("Keyboard");
+static const wxString WX_KEYBOARD_KEY = wxT("KeyboardKey");
+static const wxString WX_REQUIRED_INSTALLATION_PACKAGE
+  = wxT("RequiredInstallationPackage");
 static const wxString WX_STOP = wxT("Stop");
 static const wxString WX_STOP_RANK = wxT("StopRank");
 static const wxString WX_RANK = wxT("Rank");
@@ -93,6 +96,9 @@ void GOHauptwerkToOdf::FillReadFilter(
   outFilter[WX_GENERAL] = {};
   outFilter[WX_DIVISION] = {};
   outFilter[WX_KEYBOARD] = {};
+  outFilter[WX_KEYBOARD_KEY] = {wxT("KeyboardID"), wxT("NormalMIDINoteNumber")};
+  outFilter[WX_REQUIRED_INSTALLATION_PACKAGE]
+    = {WX_INSTALLATION_PACKAGE_ID, WX_NAME, wxT("SupplierName")};
   outFilter[WX_STOP] = {};
   outFilter[WX_STOP_RANK] = {};
   outFilter[WX_RANK] = {};
@@ -261,6 +267,27 @@ void GOHauptwerkToOdf::BuildIndexes() {
     m_AttacksByLayerId[attack.GetLong(WX_LAYER_ID)].push_back(&attack);
   for (const GOHauptwerkObject &release : r_Odf.GetObjects(WX_RELEASE))
     m_ReleasesByLayerId[release.GetLong(WX_LAYER_ID)].push_back(&release);
+}
+
+void GOHauptwerkToOdf::CheckInstallationPackages() {
+  /* The definition names the packages it is played from. Saying which one is
+   * missing beats letting the organ load without the sound it needs: every
+   * sample would silently fail to resolve and the organ would come up mute. */
+  for (const GOHauptwerkObject &package :
+       r_Odf.GetObjects(WX_REQUIRED_INSTALLATION_PACKAGE)) {
+    const long packageId = package.GetLong(WX_INSTALLATION_PACKAGE_ID);
+
+    if (!wxFileName::DirExists(
+          m_SampleSetPath + wxFileName::GetPathSeparator()
+          + wxString::Format(
+            wxT("OrganInstallationPackages/%06ld"), packageId)))
+      Warn(wxString::Format(
+        _("The organ is played from \"%s\" by %s, which is not installed: "
+          "look for package %06ld under OrganInstallationPackages"),
+        package.Get(WX_NAME),
+        package.Get(wxT("SupplierName")),
+        packageId));
+  }
 }
 
 void GOHauptwerkToOdf::BuildOrgan() {
@@ -996,6 +1023,33 @@ void GOHauptwerkToOdf::BuildManuals() {
   // the benchmark set spans 73 notes where its keyboard has 61 - and assuming
   // 61 would silently drop the top octave.
   std::unordered_map<long, std::pair<long, long>> compassByDivisionId;
+  /* The keys the player can actually reach, which is a different thing: the
+   * compass above is the division's, and it runs past the keyboard wherever
+   * the division is played by a coupler as well as by hands. Lowest note and
+   * count, per division. */
+  std::unordered_map<long, std::pair<long, long>> keyboardByDivisionId;
+  std::unordered_map<long, long> divisionIdByKeyboardId;
+
+  for (const GOHauptwerkObject &keyboard : r_Odf.GetObjects(WX_KEYBOARD)) {
+    const long divisionId
+      = keyboard.GetLong(wxT("Hint_PrimaryAssociatedDivisionID"), 0);
+
+    if (divisionId != 0)
+      divisionIdByKeyboardId[keyboard.GetLong(wxT("KeyboardID"))] = divisionId;
+  }
+  for (const GOHauptwerkObject &key : r_Odf.GetObjects(WX_KEYBOARD_KEY)) {
+    const auto divisionIt
+      = divisionIdByKeyboardId.find(key.GetLong(wxT("KeyboardID")));
+    const long note = key.GetLong(wxT("NormalMIDINoteNumber"), -1);
+
+    if (divisionIt != divisionIdByKeyboardId.end() && note >= 0) {
+      auto &keyboardKeys = keyboardByDivisionId[divisionIt->second];
+
+      if (keyboardKeys.second == 0 || note < keyboardKeys.first)
+        keyboardKeys.first = note;
+      keyboardKeys.second++;
+    }
+  }
 
   for (const GOHauptwerkObject &input : r_Odf.GetObjects(WX_DIVISION_INPUT)) {
     const long divisionId = input.GetLong(WX_DIVISION_ID);
@@ -1030,15 +1084,25 @@ void GOHauptwerkToOdf::BuildManuals() {
       nLogicalKeys = compassIt->second.second - firstNote + 1;
     }
 
-    // The extended range exists for couplers, not for fingers, so the player
-    // gets the conventional compass and the rest stays reachable by coupling.
-    const long nAccessibleKeys = std::min(nLogicalKeys, isPedal ? 32L : 61L);
+    /* The extended range exists for couplers, not for fingers, so the player
+     * gets the keyboard the set states and the rest stays reachable by
+     * coupling. Only where it states none does the conventional compass -
+     * 32 notes from C on a pedalboard, 61 on a manual - stand in for it. */
+    const auto keyboardIt = keyboardByDivisionId.find(divisionId);
+    const bool hasKeyboard = keyboardIt != keyboardByDivisionId.end()
+      && keyboardIt->second.second > 0;
+    const long firstAccessibleNote
+      = hasKeyboard ? std::max(keyboardIt->second.first, firstNote) : firstNote;
+    const long firstAccessibleKey = firstAccessibleNote - firstNote + 1;
+    const long nAccessibleKeys = std::min(
+      nLogicalKeys - firstAccessibleKey + 1,
+      hasKeyboard ? keyboardIt->second.second : (isPedal ? 32L : 61L));
 
     m_ManualNumberByDivisionId[divisionId] = number;
     Set(group, WX_NAME, division.Get(WX_NAME));
     Set(group, wxT("NumberOfLogicalKeys"), nLogicalKeys);
-    Set(group, wxT("FirstAccessibleKeyLogicalKeyNumber"), 1L);
-    Set(group, wxT("FirstAccessibleKeyMIDINoteNumber"), firstNote);
+    Set(group, wxT("FirstAccessibleKeyLogicalKeyNumber"), firstAccessibleKey);
+    Set(group, wxT("FirstAccessibleKeyMIDINoteNumber"), firstAccessibleNote);
     Set(group, wxT("NumberOfAccessibleKeys"), nAccessibleKeys);
     Set(group, wxT("NumberOfCouplers"), 0L);
     Set(group, wxT("NumberOfDivisionals"), 0L);
@@ -1612,6 +1676,7 @@ void GOHauptwerkToOdf::BuildDefaultConsole(unsigned nStops, unsigned nManuals) {
 
 void GOHauptwerkToOdf::Build() {
   BuildIndexes();
+  CheckInstallationPackages();
   BuildOrgan();
   BuildWindchests();
   BuildManuals();

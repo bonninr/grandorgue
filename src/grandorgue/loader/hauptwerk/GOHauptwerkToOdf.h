@@ -129,6 +129,8 @@ private:
 
   void BuildIndexes();
   void BuildOrgan();
+  /** Warns about any package the organ is played from that is missing. */
+  void CheckInstallationPackages();
   /**
    * Works out the switches to emit, without emitting them: the console has to
    * be sized around how many of them are drawn, and that is only known once
