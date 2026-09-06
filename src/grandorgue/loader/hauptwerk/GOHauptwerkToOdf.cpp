@@ -190,23 +190,41 @@ void GOHauptwerkToOdf::BuildWindchests() {
 void GOHauptwerkToOdf::BuildManuals() {
   const std::vector<GOHauptwerkObject> &divisions
     = r_Odf.GetObjects(WX_DIVISION);
+  // GrandOrgue numbers the pedal Manual000 and the manuals from 001, and
+  // NumberOfManuals counts only the latter. Hauptwerk just lists divisions,
+  // so the pedal has to be recognised by name - it is conventionally first,
+  // but the name is what actually says so, in whichever language.
+  long pedalDivisionId = -1;
+
+  for (const GOHauptwerkObject &division : divisions) {
+    const wxString lowerName = division.Get(WX_NAME).Lower();
+
+    if (
+      pedalDivisionId < 0
+      && (lowerName.Contains(wxT("pedal")) || lowerName.Contains(wxT("pédale"))
+          || lowerName.Contains(wxT("dale")) || lowerName.Contains(wxT("pedaal"))))
+      pedalDivisionId = division.GetLong(WX_DIVISION_ID);
+  }
+
+  const bool hasPedals = pedalDivisionId >= 0;
   unsigned manualN = 0;
-  bool hasPedals = false;
 
   for (const GOHauptwerkObject &division : divisions) {
     const long divisionId = division.GetLong(WX_DIVISION_ID);
-    const wxString group = numbered(wxT("Manual"), ++manualN);
-    const wxString name = division.Get(WX_NAME);
+    const bool isPedal = divisionId == pedalDivisionId;
+    const unsigned number = isPedal ? 0 : ++manualN;
+    const wxString group = numbered(wxT("Manual"), number);
+    // A pedalboard is 32 notes from C; a manual 61 from C. Hauptwerk states
+    // the compass per key action rather than per division, and a key with no
+    // pipe is simply silent, so the conventional compass is safe here.
+    const long nKeys = isPedal ? 32L : 61L;
 
-    m_ManualNumberByDivisionId[divisionId] = manualN;
-    Set(group, WX_NAME, name);
-    // Hauptwerk describes the compass per key action rather than per
-    // division; 36..96 covers every division of a normal organ and unused
-    // keys simply have no pipes.
-    Set(group, wxT("NumberOfLogicalKeys"), 61L);
+    m_ManualNumberByDivisionId[divisionId] = number;
+    Set(group, WX_NAME, division.Get(WX_NAME));
+    Set(group, wxT("NumberOfLogicalKeys"), nKeys);
     Set(group, wxT("FirstAccessibleKeyLogicalKeyNumber"), 1L);
     Set(group, wxT("FirstAccessibleKeyMIDINoteNumber"), 36L);
-    Set(group, wxT("NumberOfAccessibleKeys"), 61L);
+    Set(group, wxT("NumberOfAccessibleKeys"), nKeys);
     Set(group, wxT("NumberOfCouplers"), 0L);
     Set(group, wxT("NumberOfDivisionals"), 0L);
     Set(group, wxT("NumberOfTremulants"), 0L);
@@ -214,9 +232,6 @@ void GOHauptwerkToOdf::BuildManuals() {
     Set(group, wxT("Displayed"), WX_ODF_NO);
     // filled by BuildStops
     Set(group, wxT("NumberOfStops"), 0L);
-
-    if (manualN == 1 && name.Lower().Contains(wxT("dale")))
-      hasPedals = true;
   }
   Set(WX_ORGAN, wxT("NumberOfManuals"), (long)manualN);
   Set(WX_ORGAN, wxT("HasPedals"), hasPedals ? WX_ODF_YES : WX_ODF_NO);
