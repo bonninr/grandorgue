@@ -43,6 +43,10 @@ void GOSoundWindchestTask::Run(GOSchedulerThread *pThread) {
 
       if (p_windchest) {
         volume *= p_windchest->GetVolume();
+        // The wind model is one more multiplier on the same signal the
+        // tremulants already modulate, and costs nothing on a chest that
+        // declares no supply limit.
+        volume *= p_windchest->GetWindPressureFactor();
         for (unsigned i = 0; i < m_pTremulantTasks.size(); i++)
           volume *= m_pTremulantTasks[i]->GetVolume();
       }

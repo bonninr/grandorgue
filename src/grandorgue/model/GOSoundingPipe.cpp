@@ -227,6 +227,8 @@ void GOSoundingPipe::Load(
     1024,
     false,
     m_HarmonicNumber);
+  m_WindFlow = cfg.ReadFloat(
+    ODFSetting, group, prefix + wxT("WindFlow"), 0, 1000000, false, 0);
   m_WindchestN = cfg.ReadInteger(
     ODFSetting,
     group,
@@ -481,10 +483,21 @@ void GOSoundingPipe::SetWaveTremulant(bool on) {
   }
 }
 
+void GOSoundingPipe::ReportWindDemand(float flow) {
+  if (flow != 0 && p_OrganModel && m_WindchestN >= 1
+      && m_WindchestN <= p_OrganModel->GetWindchestCount()) {
+    GOWindchest *pWindchest = p_OrganModel->GetWindchest(m_WindchestN - 1);
+
+    if (pWindchest)
+      pWindchest->AddWindDemand(flow);
+  }
+}
+
 void GOSoundingPipe::VelocityChanged(
   unsigned velocity, unsigned last_velocity) {
   if (!m_Instances && velocity) {
     // the key pressed
+    ReportWindDemand(m_WindFlow);
     GOSoundSampler *pSampler = p_OrganModel->StartPipeSample(
       &m_SoundProvider,
       m_WindchestN,
@@ -503,6 +516,7 @@ void GOSoundingPipe::VelocityChanged(
   } else if (m_Instances && !velocity) {
     // the key released
     m_Instances--;
+    ReportWindDemand(-m_WindFlow);
     if (p_CurrentLoopSampler && p_OrganModel) {
       m_LastStop
         = p_OrganModel->StopSample(&m_SoundProvider, p_CurrentLoopSampler);

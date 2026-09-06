@@ -45,6 +45,9 @@ private:
   // play time - it all resolves during the load - but it changes the sound,
   // so it stays switchable like the rest.
   bool m_IsVoicingEnabled;
+  /* Whether to state the wind supply. Unlike voicing this one costs at play
+   * time, so it defaults off and stays independently switchable. */
+  bool m_IsWindModelEnabled;
   // Folder holding OrganDefinitions and OrganInstallationPackages
   wxString m_SampleSetPath;
   GOOdfEntries m_Entries;
@@ -120,7 +123,8 @@ public:
   GOHauptwerkToOdf(
     const GOHauptwerkOdf &odf,
     const wxString &sampleSetPath,
-    bool isVoicingEnabled = true);
+    bool isVoicingEnabled = true,
+    bool isWindModelEnabled = false);
 
   /** Runs the conversion. Safe to call once per instance. */
   void Build();

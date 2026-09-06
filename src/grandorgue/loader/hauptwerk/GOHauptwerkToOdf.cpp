@@ -99,9 +99,11 @@ void GOHauptwerkToOdf::FillReadFilter(
 GOHauptwerkToOdf::GOHauptwerkToOdf(
   const GOHauptwerkOdf &odf,
   const wxString &sampleSetPath,
-  bool isVoicingEnabled)
+  bool isVoicingEnabled,
+  bool isWindModelEnabled)
   : r_Odf(odf),
     m_IsVoicingEnabled(isVoicingEnabled),
+    m_IsWindModelEnabled(isWindModelEnabled),
     m_SampleSetPath(sampleSetPath),
     m_DrawstopCols(12),
     m_DrawstopRows(12) {}
@@ -210,6 +212,21 @@ void GOHauptwerkToOdf::BuildWindchests() {
 
     m_WindchestNumberById[id] = windchestN;
     Set(group, WX_NAME, compartment.Get(WX_NAME));
+
+    if (m_IsWindModelEnabled && !compartment.IsYes(wxT("InfiniteVolume"))) {
+      // Hauptwerk sizes a chest by the volume of air it holds. The pipes
+      // state their draw in kilograms per second, so the two are only
+      // proportional - this scale is what puts a full chord near the point
+      // where the supply gives, which is where the effect belongs.
+      const double volumeM3
+        = wxAtof(compartment.Get(wxT("StandardVolumeMetresCubed")));
+
+      if (volumeM3 > 0)
+        Set(
+          group,
+          wxT("WindSupplyCapacity"),
+          wxString::Format(wxT("%.6f"), volumeM3 * 0.02));
+    }
     // Enclosures and tremulants are attached through objects this pass does
     // not read yet, so the windchest starts unmodulated.
     Set(group, wxT("NumberOfEnclosures"), 0L);
@@ -426,6 +443,17 @@ void GOHauptwerkToOdf::BuildRank(
 
       if (harmonic > 0)
         Set(group, pipeKey + wxT("HarmonicNumber"), harmonic);
+
+      if (m_IsWindModelEnabled) {
+        const double flow = wxAtof(pipe.Get(
+          wxT("WindSupply_MassFlowRateKilogramsPerSecAtReferencePressureDiff")));
+
+        if (flow > 0)
+          Set(
+            group,
+            pipeKey + wxT("WindFlow"),
+            wxString::Format(wxT("%.8f"), flow));
+      }
 
       if (m_IsVoicingEnabled) {
         // The pitch the pipe was actually recorded at. Without it GrandOrgue

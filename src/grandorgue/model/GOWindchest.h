@@ -8,6 +8,7 @@
 #ifndef GOWINDCHEST_H
 #define GOWINDCHEST_H
 
+#include <atomic>
 #include <vector>
 
 #include <wx/string.h>
@@ -32,6 +33,14 @@ private:
   wxString m_HardName;
 
   float m_Volume;
+
+  /* Wind supply, as Hauptwerk describes it. m_WindCapacity is the reservoir
+   * this chest draws on, in the same units as the per-pipe demand, and zero
+   * means an unlimited supply - the ordinary case, and what every organ
+   * without a wind model behaves like. m_WindDemand is written from the
+   * thread that presses keys and read from the audio threads, hence atomic. */
+  float m_WindCapacity;
+  std::atomic<float> m_WindDemand;
   std::vector<GOEnclosure *> m_enclosure;
   std::vector<unsigned> m_tremulant;
   std::vector<GORank *> m_ranks;
@@ -51,6 +60,20 @@ public:
   void UpdateTremulant(GOTremulant *tremulant);
   void UpdateVolume();
   float GetVolume();
+
+  /** Whether this chest models a limited wind supply at all. */
+  bool HasWindModel() const { return m_WindCapacity > 0; }
+  /**
+   * Called as pipes start and stop speaking, with the air a pipe draws.
+   * @param flow positive when the pipe starts, negative when it stops
+   */
+  void AddWindDemand(float flow);
+  /**
+   * @return the factor the chest's output is scaled by at the current demand:
+   *   1 when the supply keeps up, falling towards a floor as it stops doing
+   *   so. Cheap enough to call once per audio block per chest.
+   */
+  float GetWindPressureFactor() const;
   unsigned GetTremulantCount();
   unsigned GetTremulantId(unsigned index);
   unsigned GetRankCount();

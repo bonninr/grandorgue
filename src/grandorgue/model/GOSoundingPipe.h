@@ -40,6 +40,9 @@ private:
   unsigned m_AudioGroupID;
   float m_TemperamentOffset;
   unsigned m_HarmonicNumber;
+  /* Air this pipe draws while speaking, in the units the windchest counts.
+   * Zero - the default - keeps it out of the wind model entirely. */
+  float m_WindFlow;
   float m_MinVolume;
   float m_MaxVolume;
   int m_OdfMidiKeyNumber;
@@ -55,6 +58,9 @@ private:
   /* Read one attack file info from the odf keys with the prefix specified and
    * add it to m_AttackFileInfos
    */
+  /** Passes a change in this pipe's air demand to the chest it stands on. */
+  void ReportWindDemand(float flow);
+
   void LoadAttackFileInfo(
     GOConfigReader &cfg, const wxString &group, const wxString &prefix);
   /* Read one release file info from the odf keys with the prefix specified and
