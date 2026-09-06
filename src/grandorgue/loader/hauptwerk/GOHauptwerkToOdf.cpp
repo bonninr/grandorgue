@@ -58,6 +58,8 @@ static const wxString WX_SAMPLE_ID = wxT("SampleID");
 static const wxString WX_STOP_ID = wxT("StopID");
 static const wxString WX_SWITCH_ID = wxT("SwitchID");
 static const wxString WX_CONTROLLING_SWITCH_ID = wxT("ControllingSwitchID");
+static const wxString WX_SOURCE_SWITCH_ID = wxT("SourceSwitchID");
+static const wxString WX_DEST_SWITCH_ID = wxT("DestSwitchID");
 static const wxString WX_COMBINATION_ID = wxT("CombinationID");
 static const wxString WX_INSTALLATION_PACKAGE_ID = wxT("InstallationPackageID");
 static const wxString WX_DIVISION_ID = wxT("DivisionID");
@@ -78,6 +80,9 @@ static const long MAX_CROSSFADE_MS = 3000;
 static const long HW_COMBINATION_CRESCENDO = 4;
 // Positions of GOSetter's crescendo pedal (CRESCENDO_STEPS there)
 static const unsigned N_CRESCENDO_STEPS = 32;
+// GOCoupler reads DestinationKeyshift with these as its bounds
+static const long MIN_KEYSHIFT = -24;
+static const long MAX_KEYSHIFT = 24;
 // Where GrandOrgue's synthesised tremulant sits when nothing says otherwise
 static const unsigned DEFAULT_TREMULANT_DEPTH = 10;
 
@@ -107,7 +112,8 @@ void GOHauptwerkToOdf::FillReadFilter(
   outFilter[WX_GENERAL] = {};
   outFilter[WX_DIVISION] = {};
   outFilter[WX_KEYBOARD] = {};
-  outFilter[WX_KEYBOARD_KEY] = {wxT("KeyboardID"), wxT("NormalMIDINoteNumber")};
+  outFilter[WX_KEYBOARD_KEY]
+    = {wxT("KeyboardID"), wxT("NormalMIDINoteNumber"), WX_SWITCH_ID};
   outFilter[WX_REQUIRED_INSTALLATION_PACKAGE]
     = {WX_INSTALLATION_PACKAGE_ID, WX_NAME, wxT("SupplierName")};
   outFilter[WX_STOP] = {};
@@ -162,11 +168,12 @@ void GOHauptwerkToOdf::FillReadFilter(
     wxT("ControlledSwitchID"),
     wxT("InitialStoredStateIsEngaged")};
   outFilter[WX_SWITCH_LINKAGE] = {
-    wxT("SourceSwitchID"),
-    wxT("DestSwitchID"),
+    WX_SOURCE_SWITCH_ID,
+    WX_DEST_SWITCH_ID,
     wxT("EngageLinkActionCode"),
     wxT("DisengageLinkActionCode")};
-  outFilter[WX_DIVISION_INPUT] = {WX_DIVISION_ID, wxT("NormalMIDINoteNumber")};
+  outFilter[WX_DIVISION_INPUT]
+    = {WX_DIVISION_ID, wxT("NormalMIDINoteNumber"), WX_SWITCH_ID};
   outFilter[WX_PIPE] = {
     WX_PIPE_ID,
     WX_RANK_ID,
@@ -179,7 +186,10 @@ void GOHauptwerkToOdf::FillReadFilter(
     WX_LAYER_ID,
     WX_PIPE_ID,
     wxT("AmpLvl_LevelAdjustDecibels"),
-    wxT("PitchLvl_DetuningPercentSemitones")};
+    wxT("PitchLvl_DetuningPercentSemitones"),
+    wxT("VoicingEQ01_HighFrequencyBoostDecibels"),
+    wxT("VoicingEQ01_TransitionFrequencyKHertz"),
+    wxT("HarmonicShaping_ThirdAndUpperHarmonicsLevelAdjustDecibels")};
   outFilter[WX_ATTACK]
     = {WX_LAYER_ID, WX_SAMPLE_ID, wxT("LoopCrossfadeLengthInSrcSampleMs")};
   outFilter[WX_RELEASE] = {
@@ -1186,6 +1196,9 @@ void GOHauptwerkToOdf::BuildRank(
     // first one that states a value is the one that counts.
     double gainDb = 0.0;
     double detuneCents = 0.0;
+    // The shelf the voicer applied: where it starts, and by how much
+    double eqFrequencyHz = 0.0;
+    double eqGainDb = 0.0;
     // The pitch the attack was recorded at, which is not the pitch the pipe
     // sounds wherever a rank is filled out by transposing another recording.
     double attackHz = 0.0;
@@ -1203,6 +1216,16 @@ void GOHauptwerkToOdf::BuildRank(
           // number carries over unchanged.
           detuneCents
             = wxAtof(pLayer->Get(wxT("PitchLvl_DetuningPercentSemitones")));
+          /* The voicer's own tone shaping: a lift or a drop above a
+           * stated frequency. Hauptwerk states it twice over - once as a
+           * plain shelf, once as an adjustment to the third and upper
+           * harmonics - and the two land on the same shelf. */
+          eqGainDb
+            = wxAtof(pLayer->Get(wxT("VoicingEQ01_HighFrequencyBoostDecibels")))
+            + wxAtof(pLayer->Get(wxT(
+              "HarmonicShaping_ThirdAndUpperHarmonicsLevelAdjustDecibels")));
+          eqFrequencyHz = 1000.0
+            * wxAtof(pLayer->Get(wxT("VoicingEQ01_TransitionFrequencyKHertz")));
           hasVoicing = true;
         }
 
@@ -1311,6 +1334,18 @@ void GOHauptwerkToOdf::BuildRank(
       if (m_IsVoicingEnabled && gainDb != 0.0)
         Set(
           group, pipeKey + wxT("Gain"), wxString::Format(wxT("%.4f"), gainDb));
+      /* Both halves have to be stated for a shelf to mean anything: a gain
+       * with no frequency has nowhere to start. */
+      if (m_IsVoicingEnabled && eqFrequencyHz > 0.0 && eqGainDb != 0.0) {
+        Set(
+          group,
+          pipeKey + wxT("VoicingEQFrequency"),
+          wxString::Format(wxT("%.2f"), eqFrequencyHz));
+        Set(
+          group,
+          pipeKey + wxT("VoicingEQGain"),
+          wxString::Format(wxT("%.4f"), eqGainDb));
+      }
       if (tuningCents != 0.0)
         Set(
           group,
@@ -1456,11 +1491,7 @@ void GOHauptwerkToOdf::BuildStops() {
    * load. */
 }
 
-void GOHauptwerkToOdf::BuildCouplers() {
-  // Hauptwerk states a key action between keyboards; GrandOrgue states a
-  // coupler on the source manual naming the destination one. Keyboards carry
-  // only a hint of which division they play, which is the only link between
-  // the two numberings.
+void GOHauptwerkToOdf::MapKeyboardsToManuals() {
   for (const GOHauptwerkObject &keyboard : r_Odf.GetObjects(WX_KEYBOARD)) {
     const auto manualIt = m_ManualNumberByDivisionId.find(
       keyboard.GetLong(wxT("Hint_PrimaryAssociatedDivisionID")));
@@ -1469,6 +1500,61 @@ void GOHauptwerkToOdf::BuildCouplers() {
       m_ManualNumberByKeyboardId[keyboard.GetLong(wxT("KeyboardID"))]
         = manualIt->second;
   }
+
+  /* The hint is not the whole map. Hauptwerk plays a division through a
+   * keyboard that hints at no division at all - a bus - with the keyboard
+   * under the player's hands feeding it and every coupler of that division
+   * hanging off it. What says which division a bus belongs to is not a hint
+   * but the wiring: each of its keys is a switch, each division input is a
+   * switch, and a linkage joins the two. Reading only the hint drops every
+   * action through the bus, which on the benchmark set is six couplers of
+   * nine - the whole Grand Orgue jamb among them. */
+  std::unordered_map<long, long> keyboardIdByKeySwitchId;
+  std::unordered_map<long, long> divisionIdByInputSwitchId;
+
+  for (const GOHauptwerkObject &key : r_Odf.GetObjects(WX_KEYBOARD_KEY))
+    keyboardIdByKeySwitchId[key.GetLong(WX_SWITCH_ID)]
+      = key.GetLong(wxT("KeyboardID"));
+  for (const GOHauptwerkObject &input : r_Odf.GetObjects(WX_DIVISION_INPUT))
+    divisionIdByInputSwitchId[input.GetLong(WX_SWITCH_ID)]
+      = input.GetLong(WX_DIVISION_ID);
+
+  // Keyboard -> every division its own keys are wired to
+  std::unordered_map<long, std::set<long>> divisionIdsByKeyboardId;
+
+  for (const GOHauptwerkObject &linkage : r_Odf.GetObjects(WX_SWITCH_LINKAGE)) {
+    const auto keyboardIt
+      = keyboardIdByKeySwitchId.find(linkage.GetLong(WX_SOURCE_SWITCH_ID));
+
+    if (keyboardIt != keyboardIdByKeySwitchId.end()) {
+      const auto divisionIt
+        = divisionIdByInputSwitchId.find(linkage.GetLong(WX_DEST_SWITCH_ID));
+
+      if (divisionIt != divisionIdByInputSwitchId.end())
+        divisionIdsByKeyboardId[keyboardIt->second].insert(divisionIt->second);
+    }
+  }
+
+  for (const auto &pair : divisionIdsByKeyboardId)
+    /* Only where the hint left the keyboard unplaced, and only where the
+     * wiring is unambiguous: keys reaching two divisions are a coupler
+     * stated as wiring, not one manual's input. */
+    if (
+      pair.second.size() == 1
+      && m_ManualNumberByKeyboardId.find(pair.first)
+        == m_ManualNumberByKeyboardId.end()) {
+      const auto manualIt
+        = m_ManualNumberByDivisionId.find(*pair.second.begin());
+
+      if (manualIt != m_ManualNumberByDivisionId.end())
+        m_ManualNumberByKeyboardId[pair.first] = manualIt->second;
+    }
+}
+
+void GOHauptwerkToOdf::BuildCouplers() {
+  // Hauptwerk states a key action between keyboards; GrandOrgue states a
+  // coupler on the source manual naming the destination one.
+  MapKeyboardsToManuals();
 
   std::unordered_map<unsigned, unsigned> couplerCountByManual;
   unsigned couplerN = 0;
@@ -1479,21 +1565,45 @@ void GOHauptwerkToOdf::BuildCouplers() {
     const auto dstIt
       = m_ManualNumberByKeyboardId.find(action.GetLong(wxT("DestKeyboardID")));
 
-    // A key action to or from a keyboard with no division of its own - the
-    // extra "GrandOrgue Ex" style keyboards sets add - has nothing to couple.
+    // A key action with an end that reaches no division couples nothing.
     if (
       srcIt != m_ManualNumberByKeyboardId.end()
-      && dstIt != m_ManualNumberByKeyboardId.end()
-      && srcIt->second != dstIt->second) {
+      && dstIt != m_ManualNumberByKeyboardId.end()) {
+      const long keyshift = action.GetLong(wxT("MIDINoteNumberIncrement"), 0);
+
+      /* Source and destination on one manual is how an octave coupler is
+       * stated - and also how the keyboard under the hands is joined to the
+       * bus that plays its division. The shift tells the two apart: without
+       * one they are the same keys, wiring already accounted for, and
+       * emitting it would double every note the manual sounds. */
+      if (srcIt->second == dstIt->second && keyshift == 0)
+        continue;
+      /* GOCoupler reads the shift as a required value within its own bounds
+       * and refuses one outside them, taking the whole organ down over a
+       * single coupler. */
+      if (keyshift < MIN_KEYSHIFT || keyshift > MAX_KEYSHIFT) {
+        Warn(wxString::Format(
+          _("Coupler \"%s\" transposes by %ld semitones, more than "
+            "GrandOrgue couples; it is left out"),
+          action.Get(WX_NAME),
+          keyshift));
+        continue;
+      }
+
       const wxString group = numbered(wxT("Coupler"), ++couplerN);
 
       Set(group, WX_NAME, action.Get(WX_NAME));
       Set(group, wxT("UnisonOff"), WX_ODF_NO);
       Set(group, wxT("DestinationManual"), (long)dstIt->second);
+      Set(group, wxT("DestinationKeyshift"), keyshift);
+      /* The keys the action actually carries. A tirasse is 32 notes wide
+       * where the manual it couples to is 61, and letting that default would
+       * couple keys the pedalboard has not got. */
       Set(
         group,
-        wxT("DestinationKeyshift"),
-        action.GetLong(wxT("MIDINoteNumberIncrement"), 0));
+        wxT("FirstMIDINoteNumber"),
+        action.GetLong(wxT("MIDINoteNumOfFirstSourceKey"), 0));
+      Set(group, wxT("NumberOfKeys"), action.GetLong(wxT("NumberOfKeys"), 127));
       Set(group, wxT("CoupleToSubsequentUnisonIntermanualCouplers"), WX_ODF_NO);
       Set(group, wxT("CoupleToSubsequentUpwardIntermanualCouplers"), WX_ODF_NO);
       Set(

@@ -104,8 +104,9 @@ private:
   std::unordered_map<long, unsigned> m_RankNumberById;
   std::unordered_map<long, unsigned> m_TremulantNumberById;
   std::unordered_map<long, unsigned> m_EnclosureNumberById;
-  // Hauptwerk hangs key actions off keyboards but stops off divisions, and
-  // the two are related only by a hint on the keyboard.
+  // Hauptwerk hangs key actions off keyboards but stops off divisions, so
+  // the two numberings have to be related before a coupler can be stated.
+  // Filled by MapKeyboardsToManuals.
   std::unordered_map<long, unsigned> m_ManualNumberByKeyboardId;
   // Windchests reached by an enclosure or a tremulant, by its ODF number.
   std::map<unsigned, std::set<unsigned>> m_WindchestsByEnclosureN;
@@ -151,6 +152,15 @@ private:
   void BuildManuals();
   void BuildRanks();
   void BuildStops();
+  /**
+   * Works out which manual each keyboard plays.
+   *
+   * A keyboard usually hints at its division, but not always: Hauptwerk plays
+   * a division through an intermediate keyboard - a bus - that hints at
+   * nothing, and the keyboard under the player's hands feeds that. What
+   * places a bus is the wiring from its keys to a division's inputs.
+   */
+  void MapKeyboardsToManuals();
   void BuildCouplers();
   void BuildTremulants();
   /**
