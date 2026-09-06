@@ -11,6 +11,7 @@
 #include <wx/intl.h>
 
 #include <algorithm>
+#include <cmath>
 
 #include "GOHauptwerkOdf.h"
 
@@ -81,7 +82,10 @@ void GOHauptwerkToOdf::FillReadFilter(
     wxT("Pitch_OriginalOrgan_PitchHz"),
     wxT("WindSupply_OutputWindCompartmentID")};
   outFilter[WX_LAYER] = {
-    WX_LAYER_ID, WX_PIPE_ID, wxT("AmpLvl_LevelAdjustDecibels")};
+    WX_LAYER_ID,
+    WX_PIPE_ID,
+    wxT("AmpLvl_LevelAdjustDecibels"),
+    wxT("PitchLvl_DetuningPercentSemitones")};
   outFilter[WX_ATTACK] = {WX_LAYER_ID, WX_SAMPLE_ID};
   outFilter[WX_RELEASE] = {
     WX_LAYER_ID,
@@ -92,8 +96,11 @@ void GOHauptwerkToOdf::FillReadFilter(
 }
 
 GOHauptwerkToOdf::GOHauptwerkToOdf(
-  const GOHauptwerkOdf &odf, const wxString &sampleSetPath)
+  const GOHauptwerkOdf &odf,
+  const wxString &sampleSetPath,
+  bool isVoicingEnabled)
   : r_Odf(odf),
+    m_IsVoicingEnabled(isVoicingEnabled),
     m_SampleSetPath(sampleSetPath),
     m_DrawstopCols(12),
     m_DrawstopRows(12) {}
@@ -351,10 +358,25 @@ void GOHauptwerkToOdf::BuildRank(
     const auto layersIt = m_LayersByPipeId.find(pipe.GetLong(WX_PIPE_ID));
     wxString attackPath;
     std::vector<std::pair<wxString, long>> releases;
+    // Voicing lives on the layer, and only the first layer is used, so the
+    // first one that states a value is the one that counts.
+    double gainDb = 0.0;
+    double detuneCents = 0.0;
+    bool hasVoicing = false;
 
     if (layersIt != m_LayersByPipeId.end())
       for (const GOHauptwerkObject *pLayer : layersIt->second) {
         const long layerId = pLayer->GetLong(WX_LAYER_ID);
+
+        if (!hasVoicing) {
+          gainDb = wxAtof(pLayer->Get(wxT("AmpLvl_LevelAdjustDecibels")));
+          // Percent of a semitone, and a semitone is a hundred cents, so the
+          // number carries over unchanged.
+          detuneCents
+            = wxAtof(pLayer->Get(wxT("PitchLvl_DetuningPercentSemitones")));
+          hasVoicing = true;
+        }
+
         const auto attacksIt = m_AttacksByLayerId.find(layerId);
 
         if (attacksIt != m_AttacksByLayerId.end())
@@ -403,6 +425,40 @@ void GOHauptwerkToOdf::BuildRank(
 
       if (harmonic > 0)
         Set(group, pipeKey + wxT("HarmonicNumber"), harmonic);
+
+      if (m_IsVoicingEnabled) {
+        // The pitch the pipe was actually recorded at. Without it GrandOrgue
+        // infers the pitch from the file and the harmonic number, which is a
+        // guess; Hauptwerk states it, and stating it back is what keeps a
+        // converted rank in tune with itself.
+        const double recordedHz
+          = wxAtof(pipe.Get(wxT("Pitch_OriginalOrgan_PitchHz")));
+
+        if (recordedHz > 8.0) {
+          const double midiExact
+            = 69.0 + 12.0 * std::log2(recordedHz / 440.0);
+          const double midiKey = std::floor(midiExact);
+          const double fraction = (midiExact - midiKey) * 100.0;
+
+          if (midiKey >= 0 && midiKey <= 127) {
+            Set(group, pipeKey + wxT("MIDIKeyNumber"), (long)midiKey);
+            Set(
+              group,
+              pipeKey + wxT("MIDIPitchFraction"),
+              wxString::Format(wxT("%.6f"), fraction));
+          }
+        }
+        if (gainDb != 0.0)
+          Set(
+            group,
+            pipeKey + wxT("Gain"),
+            wxString::Format(wxT("%.4f"), gainDb));
+        if (detuneCents != 0.0)
+          Set(
+            group,
+            pipeKey + wxT("PitchTuning"),
+            wxString::Format(wxT("%.4f"), detuneCents));
+      }
 
       // Hauptwerk picks a release by how long the key was held, so the
       // shortest limit has to be tried first; the file does not list them in

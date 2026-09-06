@@ -41,6 +41,10 @@ public:
 
 private:
   const GOHauptwerkOdf &r_Odf;
+  // Whether to carry Hauptwerk's per-pipe voicing across. Costs nothing at
+  // play time - it all resolves during the load - but it changes the sound,
+  // so it stays switchable like the rest.
+  bool m_IsVoicingEnabled;
   // Folder holding OrganDefinitions and OrganInstallationPackages
   wxString m_SampleSetPath;
   GOOdfEntries m_Entries;
@@ -113,7 +117,10 @@ public:
    * @param sampleSetPath the folder containing OrganDefinitions and
    *   OrganInstallationPackages - paths in the file are relative to it
    */
-  GOHauptwerkToOdf(const GOHauptwerkOdf &odf, const wxString &sampleSetPath);
+  GOHauptwerkToOdf(
+    const GOHauptwerkOdf &odf,
+    const wxString &sampleSetPath,
+    bool isVoicingEnabled = true);
 
   /** Runs the conversion. Safe to call once per instance. */
   void Build();

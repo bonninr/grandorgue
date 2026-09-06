@@ -133,6 +133,13 @@ public:
   GOSettingUnsigned LoopLoad;
   GOSettingUnsigned ReleaseLoad;
 
+  // Hauptwerk fidelity options. Each costs something - load time, memory or
+  // CPU - so each can be turned off independently on a machine that cannot
+  // afford it, and the organ still plays without any of them.
+  GOSettingBool HauptwerkVoicing;
+  GOSettingBool HauptwerkSampledTremulants;
+  GOSettingBool HauptwerkWindModel;
+
   GOSettingBool ManageCache;
   GOSettingBool CompressCache;
   GOSettingEnum<GOInitialLoadType> LoadLastFile;

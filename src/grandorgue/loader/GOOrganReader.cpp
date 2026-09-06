@@ -98,7 +98,8 @@ GOOrganReader::GOOrganReader(
         sampleSetPath,
         odfName.GetPath());
 
-    GOHauptwerkToOdf converter(hwOdf, sampleSetPath);
+    GOHauptwerkToOdf converter(
+      hwOdf, sampleSetPath, config.HauptwerkVoicing());
 
     converter.Build();
     for (const wxString &warning : converter.GetWarnings())
