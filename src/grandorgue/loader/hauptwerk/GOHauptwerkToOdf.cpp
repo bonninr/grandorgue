@@ -28,6 +28,8 @@ static const wxString WX_ATTACK = wxT("Pipe_SoundEngine01_AttackSample");
 static const wxString WX_RELEASE = wxT("Pipe_SoundEngine01_ReleaseSample");
 static const wxString WX_SAMPLE = wxT("Sample");
 static const wxString WX_WIND_COMPARTMENT = wxT("WindCompartment");
+static const wxString WX_WIND_COMPARTMENT_LINKAGE
+  = wxT("WindCompartmentLinkage");
 static const wxString WX_TREMULANT = wxT("Tremulant");
 static const wxString WX_TREMULANT_WAVEFORM = wxT("TremulantWaveform");
 static const wxString WX_TREMULANT_WAVEFORM_PIPE = wxT("TremulantWaveformPipe");
@@ -88,6 +90,9 @@ void GOHauptwerkToOdf::FillReadFilter(
   outFilter[WX_STOP_RANK] = {};
   outFilter[WX_RANK] = {};
   outFilter[WX_WIND_COMPARTMENT] = {};
+  outFilter[WX_WIND_COMPARTMENT_LINKAGE] = {
+    wxT("SecondWindCompartmentID"),
+    wxT("MassFlowRateKilogramsPerSecAtReferencePressureDiff")};
   outFilter[WX_TREMULANT] = {};
   outFilter[WX_TREMULANT_WAVEFORM]
     = {wxT("TremulantWaveformID"), wxT("TremulantID")};
@@ -621,7 +626,18 @@ bool GOHauptwerkToOdf::ControlByHwSwitch(
 }
 
 void GOHauptwerkToOdf::BuildWindchests() {
+  /* What each compartment is fed, in kilograms of air per second - the same
+   * units the pipes state their draw in, so the two can be compared directly
+   * instead of through a scale factor. A compartment nothing feeds is a
+   * source, the blower, and is left unlimited. */
+  std::unordered_map<long, double> supplyKgPerSecById;
   unsigned windchestN = 0;
+
+  for (const GOHauptwerkObject &linkage :
+       r_Odf.GetObjects(WX_WIND_COMPARTMENT_LINKAGE))
+    supplyKgPerSecById[linkage.GetLong(wxT("SecondWindCompartmentID"))]
+      += wxAtof(
+        linkage.Get(wxT("MassFlowRateKilogramsPerSecAtReferencePressureDiff")));
 
   for (const GOHauptwerkObject &compartment :
        r_Odf.GetObjects(WX_WIND_COMPARTMENT)) {
@@ -632,18 +648,13 @@ void GOHauptwerkToOdf::BuildWindchests() {
     Set(group, WX_NAME, compartment.Get(WX_NAME));
 
     if (m_IsWindModelEnabled && !compartment.IsYes(wxT("InfiniteVolume"))) {
-      // Hauptwerk sizes a chest by the volume of air it holds. The pipes
-      // state their draw in kilograms per second, so the two are only
-      // proportional - this scale is what puts a full chord near the point
-      // where the supply gives, which is where the effect belongs.
-      const double volumeM3
-        = wxAtof(compartment.Get(wxT("StandardVolumeMetresCubed")));
+      const auto supplyIt = supplyKgPerSecById.find(id);
 
-      if (volumeM3 > 0)
+      if (supplyIt != supplyKgPerSecById.end() && supplyIt->second > 0)
         Set(
           group,
           wxT("WindSupplyCapacity"),
-          wxString::Format(wxT("%.6f"), volumeM3 * 0.02));
+          wxString::Format(wxT("%.6f"), supplyIt->second));
     }
     // Enclosures and tremulants are attached through objects this pass does
     // not read yet, so the windchest starts unmodulated.
