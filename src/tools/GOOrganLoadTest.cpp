@@ -107,7 +107,7 @@ public:
         for (unsigned manualI = controller.GetFirstManualIndex();
              manualI <= controller.GetManualAndPedalCount();
              manualI++) {
-          const GOManual *pManual = controller.GetManual(manualI);
+          GOManual *pManual = controller.GetManual(manualI);
 
           if (pManual) {
             nStops += pManual->GetStopCount();
