@@ -138,11 +138,9 @@ public:
         std::cout << "  stops    : " << nStops << "\n";
         std::cout << "  couplers : " << nCouplers << "\n";
         std::cout << "  voicing  : " << (isNoVoicing ? "off" : "on")
-                  << "
-";
+                  << "\n";
         std::cout << "  windmodel: " << (isWindModel ? "on" : "off")
-                  << "
-";
+                  << "\n";
 
         unsigned nWindLimited = 0;
 
@@ -155,8 +153,7 @@ public:
             nWindLimited++;
         }
         std::cout << "  wind-limited chests: " << nWindLimited
-                  << "
-";
+                  << "\n";
       }
       controller.Clear();
     }
