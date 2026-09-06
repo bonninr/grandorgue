@@ -57,6 +57,37 @@ private:
   // would stack every stop of the organ on the same spot.
   unsigned m_DrawstopCols;
   unsigned m_DrawstopRows;
+  // Cells handed out so far, so switches and stops never land on the same one.
+  unsigned m_NPlacedDrawstops;
+
+  /**
+   * One GrandOrgue switch, condensed from the Hauptwerk switches that behave
+   * as a single control.
+   *
+   * Hauptwerk states one console control as several switches linked to each
+   * other - the logical drawstop, its image on the console, its image on the
+   * alternative jamb - and those links run both ways, so the graph has cycles
+   * that GrandOrgue's combinational switches cannot express. Each group of
+   * mutually reachable switches is therefore one switch here, which is also
+   * what the group means: one thing the player operates.
+   */
+  struct GOSwitchComponent {
+    wxString name;
+    // Every switch of the group, so a consumer naming any of them finds it
+    std::vector<long> hwSwitchIds;
+    // Numbers of the switches feeding this one; empty makes it an input
+    std::vector<unsigned> inputSwitchNs;
+    bool isDefaultEngaged;
+    // Hauptwerk says the player can operate it, so it is worth drawing
+    bool isClickable;
+  };
+
+  // In an order where a switch only ever names earlier ones: GOOrganModel
+  // appends each switch to its list after loading it, so a reference forward
+  // is out of range.
+  std::vector<GOSwitchComponent> m_SwitchComponents;
+  // Hauptwerk switch id -> the one-based number of the switch holding it
+  std::unordered_map<long, unsigned> m_SwitchNumberByHwId;
 
   // Hauptwerk id -> the one-based number the ODF group uses
   std::unordered_map<long, unsigned> m_ManualNumberByDivisionId;
@@ -89,6 +120,14 @@ private:
 
   void BuildIndexes();
   void BuildOrgan();
+  /**
+   * Works out the switches to emit, without emitting them: the console has to
+   * be sized around how many of them are drawn, and that is only known once
+   * the graph has been condensed.
+   */
+  void AnalyzeSwitches();
+  /** Writes the switch sections AnalyzeSwitches worked out. */
+  void BuildSwitches();
   void BuildWindchests();
   void BuildManuals();
   void BuildRanks();
@@ -104,8 +143,15 @@ private:
    * not the Hauptwerk console: those graphics are not reproduced.
    */
   void BuildDefaultConsole(unsigned nStops, unsigned nManuals);
-  /** Places one drawstop in the console grid, filling column by column. */
-  void PlaceDrawstop(const wxString &group, unsigned stopI);
+  /** Places one drawstop in the next free console cell. */
+  void PlaceDrawstop(const wxString &group);
+  /**
+   * Points a drawstop at the switch that operates it, which makes it follow
+   * that switch instead of being operated directly.
+   *
+   * @return whether a switch was found, leaving the drawstop unchanged if not
+   */
+  bool ControlByHwSwitch(const wxString &group, long hwSwitchId);
 
   /**
    * @return the sample path relative to the OrganDefinitions folder, in the

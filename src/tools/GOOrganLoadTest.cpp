@@ -26,6 +26,7 @@
 #include "loader/GOProgressMonitor.h"
 #include "model/GOManual.h"
 #include "model/GORank.h"
+#include "model/GOSwitch.h"
 #include "model/GOWindchest.h"
 #include "model/GOWindchest.h"
 
@@ -115,6 +116,7 @@ public:
         std::cout << "  windchsts: " << controller.GetWindchestCount() << "\n";
         std::cout << "  enclosurs: " << controller.GetEnclosureCount() << "\n";
         std::cout << "  tremulnts: " << controller.GetTremulantCount() << "\n";
+        std::cout << "  switches : " << controller.GetSwitchCount() << "\n";
 
         unsigned nStops = 0;
         unsigned nCouplers = 0;
@@ -152,8 +154,25 @@ public:
           if (pChest && pChest->HasWindModel())
             nWindLimited++;
         }
-        std::cout << "  wind-limited chests: " << nWindLimited
-                  << "\n";
+        std::cout << "  wind-limited chests: " << nWindLimited << "\n";
+
+        unsigned nDrawnSwitches = 0;
+        unsigned nDerivedSwitches = 0;
+
+        for (unsigned n = controller.GetSwitchCount(), switchI = 0;
+             switchI < n;
+             switchI++) {
+          const GOSwitch *pSwitch = controller.GetSwitch(switchI);
+
+          if (pSwitch) {
+            if (pSwitch->IsDisplayed())
+              nDrawnSwitches++;
+            if (pSwitch->IsReadOnly())
+              nDerivedSwitches++;
+          }
+        }
+        std::cout << "  switches drawn: " << nDrawnSwitches
+                  << ", derived: " << nDerivedSwitches << "\n";
       }
       controller.Clear();
     }

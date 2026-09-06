@@ -32,6 +32,8 @@ static const wxString WX_TREMULANT = wxT("Tremulant");
 static const wxString WX_ENCLOSURE = wxT("Enclosure");
 static const wxString WX_ENCLOSURE_PIPE = wxT("EnclosurePipe");
 static const wxString WX_KEY_ACTION = wxT("KeyAction");
+static const wxString WX_SWITCH = wxT("Switch");
+static const wxString WX_SWITCH_LINKAGE = wxT("SwitchLinkage");
 static const wxString WX_DIVISION_INPUT = wxT("DivisionInput");
 
 // Hauptwerk attribute names used in more than one place
@@ -41,11 +43,18 @@ static const wxString WX_PIPE_ID = wxT("PipeID");
 static const wxString WX_LAYER_ID = wxT("LayerID");
 static const wxString WX_SAMPLE_ID = wxT("SampleID");
 static const wxString WX_STOP_ID = wxT("StopID");
+static const wxString WX_SWITCH_ID = wxT("SwitchID");
+static const wxString WX_CONTROLLING_SWITCH_ID = wxT("ControllingSwitchID");
 static const wxString WX_DIVISION_ID = wxT("DivisionID");
 
 // Hauptwerk marks the release that catches every remaining key-press length
 // with this instead of a real limit.
 static const long HW_UNLIMITED_KEY_PRESS_MS = 99999;
+// Link action codes: "engage the destination" and "release the destination"
+static const long HW_LINK_ENGAGE = 1;
+static const long HW_LINK_DISENGAGE = 2;
+// GOOrganModel reads NumberOfSwitches with this as its upper bound
+static const unsigned MAX_ODF_SWITCHES = 999;
 
 static const wxString WX_ORGAN = wxT("Organ");
 static const wxString WX_ODF_YES = wxT("Y");
@@ -72,6 +81,13 @@ void GOHauptwerkToOdf::FillReadFilter(
   outFilter[WX_ENCLOSURE] = {};
   outFilter[WX_ENCLOSURE_PIPE] = {WX_PIPE_ID, wxT("EnclosureID")};
   outFilter[WX_KEY_ACTION] = {};
+  outFilter[WX_SWITCH]
+    = {WX_SWITCH_ID, WX_NAME, wxT("DefaultToEngaged"), wxT("Clickable")};
+  outFilter[WX_SWITCH_LINKAGE] = {
+    wxT("SourceSwitchID"),
+    wxT("DestSwitchID"),
+    wxT("EngageLinkActionCode"),
+    wxT("DisengageLinkActionCode")};
   outFilter[WX_DIVISION_INPUT]
     = {WX_DIVISION_ID, wxT("NormalMIDINoteNumber")};
   outFilter[WX_PIPE] = {
@@ -106,10 +122,12 @@ GOHauptwerkToOdf::GOHauptwerkToOdf(
     m_IsWindModelEnabled(isWindModelEnabled),
     m_SampleSetPath(sampleSetPath),
     m_DrawstopCols(12),
-    m_DrawstopRows(12) {}
+    m_DrawstopRows(12),
+    m_NPlacedDrawstops(0) {}
 
-void GOHauptwerkToOdf::PlaceDrawstop(const wxString &group, unsigned stopI) {
+void GOHauptwerkToOdf::PlaceDrawstop(const wxString &group) {
   const unsigned nCells = m_DrawstopCols * m_DrawstopRows;
+  const unsigned stopI = m_NPlacedDrawstops++;
 
   // Past the main grid GrandOrgue keeps going in the extra rows, which it
   // addresses with row numbers above 99.
@@ -200,6 +218,293 @@ void GOHauptwerkToOdf::BuildOrgan() {
   Set(WX_ORGAN, wxT("NumberOfReversiblePistons"), 0L);
   Set(WX_ORGAN, wxT("NumberOfDivisionalCouplers"), 0L);
   Set(WX_ORGAN, wxT("NumberOfGenerals"), 0L);
+}
+
+void GOHauptwerkToOdf::AnalyzeSwitches() {
+  const std::vector<GOHauptwerkObject> &hwSwitches = r_Odf.GetObjects(WX_SWITCH);
+
+  if (!hwSwitches.empty()) {
+    std::unordered_map<long, const GOHauptwerkObject *> switchById;
+
+    for (const GOHauptwerkObject &hwSwitch : hwSwitches)
+      switchById[hwSwitch.GetLong(WX_SWITCH_ID)] = &hwSwitch;
+
+    /* Only the links saying "the destination holds while the source holds"
+     * are logic. The others set or clear the destination on a keypress, which
+     * is a piston: what it does depends on the state Hauptwerk keeps between
+     * presses, and a combinational switch has no such state. In this set they
+     * are all one thing anyway - the master that loads the crescendo with its
+     * defaults - and none of them reaches a stop. */
+    std::unordered_map<long, std::vector<long>> sourcesById;
+
+    for (const GOHauptwerkObject &link : r_Odf.GetObjects(WX_SWITCH_LINKAGE))
+      if (
+        link.GetLong(wxT("EngageLinkActionCode"), HW_LINK_ENGAGE)
+          == HW_LINK_ENGAGE
+        && link.GetLong(wxT("DisengageLinkActionCode"), HW_LINK_DISENGAGE)
+          == HW_LINK_DISENGAGE)
+        sourcesById[link.GetLong(wxT("DestSwitchID"))].push_back(
+          link.GetLong(wxT("SourceSwitchID")));
+
+    /* Only the switches something audible depends on. The list as a whole is
+     * mostly console and combination bookkeeping - Nancy states eight
+     * thousand of them against GrandOrgue's limit of 999 - while the part
+     * that decides what sounds is a small fraction of it. */
+    std::vector<long> pending;
+
+    for (const GOHauptwerkObject &stop : r_Odf.GetObjects(WX_STOP))
+      pending.push_back(stop.GetLong(WX_CONTROLLING_SWITCH_ID));
+    for (const GOHauptwerkObject &tremulant : r_Odf.GetObjects(WX_TREMULANT))
+      pending.push_back(tremulant.GetLong(WX_CONTROLLING_SWITCH_ID));
+    for (const GOHauptwerkObject &keyAction : r_Odf.GetObjects(WX_KEY_ACTION))
+      pending.push_back(keyAction.GetLong(wxT("ConditionSwitchID")));
+
+    std::unordered_map<long, unsigned> nodeIByHwId;
+    std::vector<long> hwIdByNodeI;
+
+    while (!pending.empty()) {
+      const long hwId = pending.back();
+
+      pending.pop_back();
+      if (
+        hwId != 0 && switchById.find(hwId) != switchById.end()
+        && nodeIByHwId.find(hwId) == nodeIByHwId.end()) {
+        const auto sourcesIt = sourcesById.find(hwId);
+
+        nodeIByHwId[hwId] = (unsigned)hwIdByNodeI.size();
+        hwIdByNodeI.push_back(hwId);
+        if (sourcesIt != sourcesById.end())
+          for (long sourceId : sourcesIt->second)
+            pending.push_back(sourceId);
+      }
+    }
+
+    const unsigned nNodes = (unsigned)hwIdByNodeI.size();
+    std::vector<std::vector<unsigned>> sourceNodeIs(nNodes);
+
+    for (unsigned nodeI = 0; nodeI < nNodes; nodeI++) {
+      const auto sourcesIt = sourcesById.find(hwIdByNodeI[nodeI]);
+
+      if (sourcesIt != sourcesById.end())
+        for (long sourceId : sourcesIt->second) {
+          const auto sourceIt = nodeIByHwId.find(sourceId);
+
+          if (sourceIt != nodeIByHwId.end())
+            sourceNodeIs[nodeI].push_back(sourceIt->second);
+        }
+    }
+
+    /* Tarjan, iteratively: the links run both ways between the switches that
+     * stand for one control, so the graph has cycles, and each group of
+     * mutually reachable switches becomes one GrandOrgue switch. An explicit
+     * stack because the recursion would be as deep as the graph. */
+    const unsigned UNVISITED = (unsigned)-1;
+    std::vector<unsigned> visitOrder(nNodes, UNVISITED);
+    std::vector<unsigned> lowLink(nNodes, 0);
+    std::vector<bool> isOnStack(nNodes, false);
+    std::vector<unsigned> componentByNodeI(nNodes, UNVISITED);
+    std::vector<unsigned> componentStack;
+    std::vector<std::pair<unsigned, unsigned>> walk;
+    unsigned nVisited = 0;
+    unsigned nComponents = 0;
+
+    for (unsigned rootI = 0; rootI < nNodes; rootI++)
+      if (visitOrder[rootI] == UNVISITED) {
+        walk.push_back(std::make_pair(rootI, 0));
+        while (!walk.empty()) {
+          const unsigned nodeI = walk.back().first;
+          const std::vector<unsigned> &nodeSources = sourceNodeIs[nodeI];
+          unsigned edgeI = walk.back().second;
+          bool isDescending = false;
+
+          if (edgeI == 0) {
+            visitOrder[nodeI] = lowLink[nodeI] = nVisited++;
+            componentStack.push_back(nodeI);
+            isOnStack[nodeI] = true;
+          }
+          while (!isDescending && edgeI < nodeSources.size()) {
+            const unsigned nextI = nodeSources[edgeI++];
+
+            if (visitOrder[nextI] == UNVISITED) {
+              // Written back before the push: that can move the element away.
+              walk.back().second = edgeI;
+              walk.push_back(std::make_pair(nextI, 0));
+              isDescending = true;
+            } else if (isOnStack[nextI] && visitOrder[nextI] < lowLink[nodeI])
+              lowLink[nodeI] = visitOrder[nextI];
+          }
+          if (!isDescending) {
+            if (lowLink[nodeI] == visitOrder[nodeI]) {
+              unsigned poppedI;
+
+              do {
+                poppedI = componentStack.back();
+                componentStack.pop_back();
+                isOnStack[poppedI] = false;
+                componentByNodeI[poppedI] = nComponents;
+              } while (poppedI != nodeI);
+              nComponents++;
+            }
+            walk.pop_back();
+            if (!walk.empty()) {
+              const unsigned parentI = walk.back().first;
+
+              if (lowLink[nodeI] < lowLink[parentI])
+                lowLink[parentI] = lowLink[nodeI];
+            }
+          }
+        }
+      }
+
+    std::vector<std::vector<unsigned>> nodeIsByComponent(nComponents);
+    std::vector<std::set<unsigned>> sourceComponents(nComponents);
+
+    for (unsigned nodeI = 0; nodeI < nNodes; nodeI++) {
+      const unsigned componentI = componentByNodeI[nodeI];
+
+      nodeIsByComponent[componentI].push_back(nodeI);
+      for (unsigned sourceI : sourceNodeIs[nodeI])
+        if (componentByNodeI[sourceI] != componentI)
+          sourceComponents[componentI].insert(componentByNodeI[sourceI]);
+    }
+
+    /* GOOrganModel adds each switch to its list only after loading it, so a
+     * switch naming a later one is out of range: they have to be emitted with
+     * every source before the switch that reads it. */
+    std::vector<unsigned> nPendingSources(nComponents, 0);
+    std::vector<std::vector<unsigned>> dependents(nComponents);
+    std::vector<unsigned> ready;
+    std::vector<unsigned> orderedComponents;
+
+    for (unsigned componentI = 0; componentI < nComponents; componentI++) {
+      nPendingSources[componentI]
+        = (unsigned)sourceComponents[componentI].size();
+      for (unsigned sourceI : sourceComponents[componentI])
+        dependents[sourceI].push_back(componentI);
+    }
+    for (unsigned componentI = 0; componentI < nComponents; componentI++)
+      if (nPendingSources[componentI] == 0)
+        ready.push_back(componentI);
+    while (!ready.empty()) {
+      const unsigned componentI = ready.back();
+
+      ready.pop_back();
+      orderedComponents.push_back(componentI);
+      for (unsigned dependentI : dependents[componentI]) {
+        nPendingSources[dependentI]--;
+        if (nPendingSources[dependentI] == 0)
+          ready.push_back(dependentI);
+      }
+    }
+
+    if (orderedComponents.size() > MAX_ODF_SWITCHES)
+      Warn(wxString::Format(
+        _("The organ states %u switch groups, more than the %u GrandOrgue "
+          "allows; its stops are drawn directly instead"),
+        (unsigned)orderedComponents.size(),
+        MAX_ODF_SWITCHES));
+    else if (orderedComponents.size() < nComponents)
+      /* Condensing every cycle should have left an order; refuse rather than
+       * emit a switch naming one that was never written. */
+      Warn(_("The switches of this organ could not be put in a usable order; "
+             "its stops are drawn directly instead"));
+    else {
+      std::vector<unsigned> switchNByComponent(nComponents, 0);
+
+      for (unsigned n = (unsigned)orderedComponents.size(), orderI = 0;
+           orderI < n;
+           orderI++)
+        switchNByComponent[orderedComponents[orderI]] = orderI + 1;
+      for (unsigned componentI : orderedComponents) {
+        GOSwitchComponent component;
+
+        component.isDefaultEngaged = false;
+        component.isClickable = false;
+        for (unsigned nodeI : nodeIsByComponent[componentI]) {
+          const long hwId = hwIdByNodeI[nodeI];
+          const GOHauptwerkObject &hwSwitch = *switchById[hwId];
+          const wxString &name = hwSwitch.Get(WX_NAME);
+
+          component.hwSwitchIds.push_back(hwId);
+          if (hwSwitch.Get(wxT("DefaultToEngaged")) == WX_ODF_YES)
+            component.isDefaultEngaged = true;
+          if (hwSwitch.Get(wxT("Clickable")) == WX_ODF_YES)
+            component.isClickable = true;
+          /* Hauptwerk marks the switches standing for a drawing of a control,
+           * rather than for the control itself, with a leading underscore,
+           * and the plain name is the one worth showing. */
+          if (
+            !name.IsEmpty()
+            && (component.name.IsEmpty()
+                || (component.name.StartsWith(wxT("__"))
+                    && !name.StartsWith(wxT("__")))))
+            component.name = name;
+        }
+        if (component.name.IsEmpty())
+          component.name = wxString::Format(
+            wxT("Switch %u"), (unsigned)m_SwitchComponents.size() + 1);
+        for (unsigned sourceI : sourceComponents[componentI])
+          component.inputSwitchNs.push_back(switchNByComponent[sourceI]);
+        for (long hwId : component.hwSwitchIds)
+          m_SwitchNumberByHwId[hwId] = (unsigned)m_SwitchComponents.size() + 1;
+        m_SwitchComponents.push_back(component);
+      }
+    }
+  }
+}
+
+void GOHauptwerkToOdf::BuildSwitches() {
+  unsigned switchN = 0;
+
+  for (const GOSwitchComponent &component : m_SwitchComponents) {
+    const wxString group = numbered(wxT("Switch"), ++switchN);
+
+    Set(group, WX_NAME, component.name);
+    if (component.inputSwitchNs.empty()) {
+      Set(
+        group,
+        wxT("DefaultToEngaged"),
+        component.isDefaultEngaged ? WX_ODF_YES : WX_ODF_NO);
+      /* Only what Hauptwerk says the player can operate is drawn. The rest is
+       * the organ's internal wiring, and a console showing all of it would
+       * bury the drawstops among hundreds of switches. */
+      if (component.isClickable) {
+        Set(group, wxT("Displayed"), WX_ODF_YES);
+        PlaceDrawstop(group);
+      } else
+        Set(group, wxT("Displayed"), WX_ODF_NO);
+    } else {
+      /* Any source holding is enough to hold this one. A switch with a
+       * function is read-only in GrandOrgue, which is right here: these
+       * follow the switches the player operates. */
+      unsigned inputN = 0;
+
+      Set(group, wxT("Function"), wxT("Or"));
+      Set(group, wxT("SwitchCount"), (long)component.inputSwitchNs.size());
+      for (unsigned inputSwitchN : component.inputSwitchNs)
+        Set(
+          group,
+          wxString::Format(wxT("Switch%03u"), ++inputN),
+          (long)inputSwitchN);
+      Set(group, wxT("Displayed"), WX_ODF_NO);
+    }
+  }
+  Set(WX_ORGAN, wxT("NumberOfSwitches"), (long)switchN);
+}
+
+bool GOHauptwerkToOdf::ControlByHwSwitch(
+  const wxString &group, long hwSwitchId) {
+  const auto switchIt = m_SwitchNumberByHwId.find(hwSwitchId);
+  const bool isFound = switchIt != m_SwitchNumberByHwId.end();
+
+  if (isFound) {
+    Set(group, wxT("Function"), wxT("Or"));
+    Set(group, wxT("SwitchCount"), 1L);
+    Set(group, wxT("Switch001"), (long)switchIt->second);
+    // The switch is the drawstop the player sees; this one follows it.
+    Set(group, wxT("Displayed"), WX_ODF_NO);
+  }
+  return isFound;
 }
 
 void GOHauptwerkToOdf::BuildWindchests() {
@@ -566,14 +871,17 @@ void GOHauptwerkToOdf::BuildStops() {
 
       Set(group, WX_NAME, stop.Get(WX_NAME));
       Set(group, wxT("FirstAccessiblePipeLogicalKeyNumber"), 1L);
-      // Without this the drawstop is not drawn at all and there is no way to
-      // engage the stop: GrandOrgue defaults Displayed to N.
-      Set(group, wxT("Displayed"), WX_ODF_YES);
-      // GODrawstop reads this as a required value for a plain drawstop - one
-      // with no Function - so it must be present even though N is what a stop
-      // starts as anyway.
-      Set(group, wxT("DefaultToEngaged"), WX_ODF_NO);
-      PlaceDrawstop(group, stopN - 1);
+      /* With a switch the drawstop the player sees is the switch, and this
+       * follows it. Without one the stop has to be drawn itself, or there is
+       * no way to engage it: GrandOrgue defaults Displayed to N. */
+      if (!ControlByHwSwitch(group, stop.GetLong(WX_CONTROLLING_SWITCH_ID))) {
+        Set(group, wxT("Displayed"), WX_ODF_YES);
+        // GODrawstop reads this as a required value for a plain drawstop -
+        // one with no Function - so it must be present even though N is what
+        // a stop starts as anyway.
+        Set(group, wxT("DefaultToEngaged"), WX_ODF_NO);
+        PlaceDrawstop(group);
+      }
 
       for (const GOHauptwerkObject *pStopRank : ranksIt->second) {
         const auto rankIt
@@ -661,8 +969,12 @@ void GOHauptwerkToOdf::BuildCouplers() {
       Set(group, wxT("CoupleToSubsequentUpwardIntramanualCouplers"), WX_ODF_NO);
       Set(
         group, wxT("CoupleToSubsequentDownwardIntramanualCouplers"), WX_ODF_NO);
-      Set(group, wxT("Displayed"), WX_ODF_YES);
-      Set(group, wxT("DefaultToEngaged"), WX_ODF_NO);
+      if (!ControlByHwSwitch(
+            group, action.GetLong(wxT("ConditionSwitchID")))) {
+        Set(group, wxT("Displayed"), WX_ODF_YES);
+        Set(group, wxT("DefaultToEngaged"), WX_ODF_NO);
+        PlaceDrawstop(group);
+      }
 
       const unsigned srcManualN = srcIt->second;
       const unsigned manualCouplerN = ++couplerCountByManual[srcManualN];
@@ -697,8 +1009,12 @@ void GOHauptwerkToOdf::BuildTremulants() {
       wxT("StartRate"),
       tremulant.GetLong(wxT("StartRatePercent"), 30));
     Set(group, wxT("StopRate"), tremulant.GetLong(wxT("StopRatePercent"), 30));
-    Set(group, wxT("Displayed"), WX_ODF_YES);
-    Set(group, wxT("DefaultToEngaged"), WX_ODF_NO);
+    if (!ControlByHwSwitch(
+          group, tremulant.GetLong(WX_CONTROLLING_SWITCH_ID))) {
+      Set(group, wxT("Displayed"), WX_ODF_YES);
+      Set(group, wxT("DefaultToEngaged"), WX_ODF_NO);
+      PlaceDrawstop(group);
+    }
     // Which windchests it acts on is not stated directly; a tremulant belongs
     // to a division, so it is attached to every windchest the organ has.
     for (const auto &pair : m_WindchestNumberById)
@@ -828,8 +1144,19 @@ void GOHauptwerkToOdf::Build() {
   BuildWindchests();
   BuildManuals();
   BuildRanks();
-  BuildDefaultConsole(
-    r_Odf.GetObjectCount(WX_STOP), r_Odf.GetObjectCount(WX_DIVISION));
+  AnalyzeSwitches();
+
+  /* What the console has to hold: with switches it draws those the player
+   * operates, and the stops follow them without being drawn themselves. */
+  unsigned nDrawn = 0;
+
+  for (const GOSwitchComponent &component : m_SwitchComponents)
+    if (component.isClickable && component.inputSwitchNs.empty())
+      nDrawn++;
+  if (nDrawn == 0)
+    nDrawn = r_Odf.GetObjectCount(WX_STOP);
+  BuildDefaultConsole(nDrawn, r_Odf.GetObjectCount(WX_DIVISION));
+  BuildSwitches();
   BuildStops();
   BuildCouplers();
   BuildTremulants();
