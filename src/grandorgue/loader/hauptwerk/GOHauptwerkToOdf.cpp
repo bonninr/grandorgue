@@ -1604,13 +1604,27 @@ void GOHauptwerkToOdf::BuildCouplers() {
         wxT("FirstMIDINoteNumber"),
         action.GetLong(wxT("MIDINoteNumOfFirstSourceKey"), 0));
       Set(group, wxT("NumberOfKeys"), action.GetLong(wxT("NumberOfKeys"), 127));
-      Set(group, wxT("CoupleToSubsequentUnisonIntermanualCouplers"), WX_ODF_NO);
-      Set(group, wxT("CoupleToSubsequentUpwardIntermanualCouplers"), WX_ODF_NO);
+      /* A Hauptwerk key action delivers its notes to a keyboard, and that
+       * keyboard sends on everything it receives through its own outgoing
+       * actions - there is no mark on an action saying whether what arrives
+       * by coupling travels further, because it always does. So the couplers
+       * cascade, which is also what the organ they are copied from does:
+       * draw the tirasse and the Positif to Grand Orgue together on a French
+       * console and the pedal sounds the Positif. */
       Set(
-        group, wxT("CoupleToSubsequentDownwardIntermanualCouplers"), WX_ODF_NO);
-      Set(group, wxT("CoupleToSubsequentUpwardIntramanualCouplers"), WX_ODF_NO);
+        group, wxT("CoupleToSubsequentUnisonIntermanualCouplers"), WX_ODF_YES);
       Set(
-        group, wxT("CoupleToSubsequentDownwardIntramanualCouplers"), WX_ODF_NO);
+        group, wxT("CoupleToSubsequentUpwardIntermanualCouplers"), WX_ODF_YES);
+      Set(
+        group,
+        wxT("CoupleToSubsequentDownwardIntermanualCouplers"),
+        WX_ODF_YES);
+      Set(
+        group, wxT("CoupleToSubsequentUpwardIntramanualCouplers"), WX_ODF_YES);
+      Set(
+        group,
+        wxT("CoupleToSubsequentDownwardIntramanualCouplers"),
+        WX_ODF_YES);
       if (!ControlByHwSwitch(group, action.GetLong(wxT("ConditionSwitchID")))) {
         Set(group, wxT("Displayed"), WX_ODF_YES);
         Set(group, wxT("DefaultToEngaged"), WX_ODF_NO);
