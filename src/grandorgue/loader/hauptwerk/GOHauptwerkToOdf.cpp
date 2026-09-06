@@ -86,7 +86,26 @@ void GOHauptwerkToOdf::FillReadFilter(
 
 GOHauptwerkToOdf::GOHauptwerkToOdf(
   const GOHauptwerkOdf &odf, const wxString &sampleSetPath)
-  : r_Odf(odf), m_SampleSetPath(sampleSetPath) {}
+  : r_Odf(odf),
+    m_SampleSetPath(sampleSetPath),
+    m_DrawstopCols(12),
+    m_DrawstopRows(12) {}
+
+void GOHauptwerkToOdf::PlaceDrawstop(const wxString &group, unsigned stopI) {
+  const unsigned nCells = m_DrawstopCols * m_DrawstopRows;
+
+  // Past the main grid GrandOrgue keeps going in the extra rows, which it
+  // addresses with row numbers above 99.
+  if (stopI < nCells) {
+    Set(group, wxT("DispDrawstopRow"), (long)(stopI / m_DrawstopCols + 1));
+    Set(group, wxT("DispDrawstopCol"), (long)(stopI % m_DrawstopCols + 1));
+  } else {
+    const unsigned extraI = stopI - nCells;
+
+    Set(group, wxT("DispDrawstopRow"), (long)(100 + extraI / 6));
+    Set(group, wxT("DispDrawstopCol"), (long)(extraI % 6 + 1));
+  }
+}
 
 void GOHauptwerkToOdf::Set(
   const wxString &group, const wxString &key, const wxString &value) {
@@ -412,6 +431,10 @@ void GOHauptwerkToOdf::BuildStops() {
 
       Set(group, WX_NAME, stop.Get(WX_NAME));
       Set(group, wxT("FirstAccessiblePipeLogicalKeyNumber"), 1L);
+      // Without this the drawstop is not drawn at all and there is no way to
+      // engage the stop: GrandOrgue defaults Displayed to N.
+      Set(group, wxT("Displayed"), WX_ODF_YES);
+      PlaceDrawstop(group, stopN - 1);
 
       for (const GOHauptwerkObject *pStopRank : ranksIt->second) {
         const auto rankIt
@@ -451,6 +474,7 @@ void GOHauptwerkToOdf::BuildDefaultConsole(unsigned nStops, unsigned nManuals) {
   // grid is sized here. The Hauptwerk console graphics are not reproduced -
   // this is GrandOrgue's own generic layout, sized to fit.
   const unsigned nCols = 12;
+
   // Two drawstop columns flank each side of the manuals, so the grid holds
   // roughly nCols * nRows; round the rows up and leave a margin.
   unsigned nRows = (nStops + nCols - 1) / nCols + 2;
@@ -462,6 +486,8 @@ void GOHauptwerkToOdf::BuildDefaultConsole(unsigned nStops, unsigned nManuals) {
 
   Set(WX_ORGAN, wxT("DispScreenSizeHoriz"), wxT("1900"));
   Set(WX_ORGAN, wxT("DispScreenSizeVert"), wxT("980"));
+  m_DrawstopCols = nCols;
+  m_DrawstopRows = nRows;
   Set(WX_ORGAN, wxT("DispDrawstopCols"), (long)nCols);
   Set(WX_ORGAN, wxT("DispDrawstopRows"), (long)nRows);
   Set(WX_ORGAN, wxT("DispExtraDrawstopCols"), 6L);
@@ -503,8 +529,7 @@ void GOHauptwerkToOdf::Build() {
   BuildWindchests();
   BuildManuals();
   BuildRanks();
-  BuildStops();
   BuildDefaultConsole(
-    (unsigned)r_Odf.GetObjectCount(WX_STOP),
-    (unsigned)r_Odf.GetObjectCount(WX_DIVISION));
+    r_Odf.GetObjectCount(WX_STOP), r_Odf.GetObjectCount(WX_DIVISION));
+  BuildStops();
 }

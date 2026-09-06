@@ -45,6 +45,11 @@ private:
   wxString m_SampleSetPath;
   GOOdfEntries m_Entries;
   std::vector<wxString> m_Warnings;
+  // Console grid, decided before the stops are built so each one can be given
+  // a cell: GrandOrgue defaults an unplaced drawstop to row 1 column 1, which
+  // would stack every stop of the organ on the same spot.
+  unsigned m_DrawstopCols;
+  unsigned m_DrawstopRows;
 
   // Hauptwerk id -> the one-based number the ODF group uses
   std::unordered_map<long, unsigned> m_ManualNumberByDivisionId;
@@ -82,6 +87,8 @@ private:
    * not the Hauptwerk console: those graphics are not reproduced.
    */
   void BuildDefaultConsole(unsigned nStops, unsigned nManuals);
+  /** Places one drawstop in the console grid, filling column by column. */
+  void PlaceDrawstop(const wxString &group, unsigned stopI);
 
   /**
    * @return the sample path relative to the OrganDefinitions folder, in the
