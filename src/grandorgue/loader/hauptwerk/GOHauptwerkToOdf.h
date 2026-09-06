@@ -149,10 +149,13 @@ private:
   void BuildCouplers();
   void BuildTremulants();
   /**
+   * @param totalAdjustDb the depths of every pipe the tremulant reaches,
+   *   summed, in decibels below each pipe's own level
+   * @param nPipes how many pipes that sum covers
    * @return the amplitude modulation depth to give the tremulant, as the
    *   percentage GOTremulant reads
    */
-  unsigned GetTremulantDepth() const;
+  unsigned GetTremulantDepth(double totalAdjustDb, unsigned nPipes) const;
   void BuildEnclosures();
   void BuildRank(const GOHauptwerkObject &rank, unsigned rankN);
   /**

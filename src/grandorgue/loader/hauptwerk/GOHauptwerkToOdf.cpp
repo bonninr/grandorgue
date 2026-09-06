@@ -29,6 +29,8 @@ static const wxString WX_RELEASE = wxT("Pipe_SoundEngine01_ReleaseSample");
 static const wxString WX_SAMPLE = wxT("Sample");
 static const wxString WX_WIND_COMPARTMENT = wxT("WindCompartment");
 static const wxString WX_TREMULANT = wxT("Tremulant");
+static const wxString WX_TREMULANT_WAVEFORM = wxT("TremulantWaveform");
+static const wxString WX_TREMULANT_WAVEFORM_PIPE = wxT("TremulantWaveformPipe");
 static const wxString WX_ENCLOSURE = wxT("Enclosure");
 static const wxString WX_ENCLOSURE_PIPE = wxT("EnclosurePipe");
 static const wxString WX_KEY_ACTION = wxT("KeyAction");
@@ -87,6 +89,12 @@ void GOHauptwerkToOdf::FillReadFilter(
   outFilter[WX_RANK] = {};
   outFilter[WX_WIND_COMPARTMENT] = {};
   outFilter[WX_TREMULANT] = {};
+  outFilter[WX_TREMULANT_WAVEFORM]
+    = {wxT("TremulantWaveformID"), wxT("TremulantID")};
+  outFilter[WX_TREMULANT_WAVEFORM_PIPE] = {
+    WX_PIPE_ID,
+    wxT("TremulantWaveformID"),
+    wxT("AmplitudeModDepthAdjustDecibels")};
   outFilter[WX_ENCLOSURE] = {};
   outFilter[WX_ENCLOSURE_PIPE] = {WX_PIPE_ID, wxT("EnclosureID")};
   outFilter[WX_KEY_ACTION] = {};
@@ -115,8 +123,7 @@ void GOHauptwerkToOdf::FillReadFilter(
     WX_LAYER_ID,
     WX_PIPE_ID,
     wxT("AmpLvl_LevelAdjustDecibels"),
-    wxT("PitchLvl_DetuningPercentSemitones"),
-    wxT("AmpLvl_TremulantModDepthAdjustDecibels")};
+    wxT("PitchLvl_DetuningPercentSemitones")};
   outFilter[WX_ATTACK] = {WX_LAYER_ID, WX_SAMPLE_ID};
   outFilter[WX_RELEASE] = {
     WX_LAYER_ID,
@@ -651,6 +658,17 @@ void GOHauptwerkToOdf::BuildWindchests() {
     windchestN = 1;
   }
   Set(WX_ORGAN, wxT("NumberOfWindchestGroups"), (long)windchestN);
+  /* Which windchest each pipe sits on. Built here rather than where it is
+   * first read: the tremulants and the enclosures both need it, and this is
+   * the earliest point at which the windchests have their numbers. */
+  for (const GOHauptwerkObject &pipe : r_Odf.GetObjects(WX_PIPE)) {
+    const long compartmentId
+      = pipe.GetLong(wxT("WindSupply_SourceWindCompartmentID"));
+    const auto windchestIt = m_WindchestNumberById.find(compartmentId);
+
+    m_WindchestNumberByPipeId[pipe.GetLong(WX_PIPE_ID)]
+      = windchestIt != m_WindchestNumberById.end() ? windchestIt->second : 1;
+  }
 }
 
 void GOHauptwerkToOdf::BuildManuals() {
@@ -1092,47 +1110,74 @@ void GOHauptwerkToOdf::BuildCouplers() {
   }
 }
 
-unsigned GOHauptwerkToOdf::GetTremulantDepth() const {
-  /* Hauptwerk does not state a tremulant depth as such. It states, per pipe,
-   * how far that pipe's depth departs from the depth its own engine applies,
-   * which is a number this converter does not have, so the departure is
-   * applied to GrandOrgue's own modest default instead. A set that says
-   * nothing - every pipe at 0 dB, as this one does - keeps that default. */
-  double totalAdjustDb = 0.0;
-  unsigned nLayers = 0;
+unsigned GOHauptwerkToOdf::GetTremulantDepth(
+  double totalAdjustDb, unsigned nPipes) const {
+  /* Hauptwerk states, per pipe, how far the tremulant pulls that pipe's
+   * amplitude down at the bottom of its swing, in decibels below the pipe's
+   * own level. GrandOrgue wants the same thing as a percentage of the level,
+   * which is what the decibels convert to: this organ's -19.2 dB is a swing
+   * down to about a ninth of full, an ordinary tremulant depth. */
   unsigned depth = DEFAULT_TREMULANT_DEPTH;
 
-  if (m_IsTremulantModelEnabled) {
-    for (const GOHauptwerkObject &layer : r_Odf.GetObjects(WX_LAYER)) {
-      totalAdjustDb
-        += wxAtof(layer.Get(wxT("AmpLvl_TremulantModDepthAdjustDecibels")));
-      nLayers++;
-    }
-    if (nLayers > 0 && totalAdjustDb != 0.0) {
-      const double adjusted
-        = DEFAULT_TREMULANT_DEPTH * pow(10.0, totalAdjustDb / nLayers / 20.0);
+  if (m_IsTremulantModelEnabled && nPipes > 0) {
+    const double asFraction = pow(10.0, totalAdjustDb / nPipes / 20.0);
+    // GOTremulant reads AmpModDepth as a percentage between 1 and 100
+    const double asPercent = 100.0 * asFraction;
 
-      // GOTremulant reads AmpModDepth as a percentage between 1 and 100
-      depth
-        = adjusted < 1.0 ? 1 : (adjusted > 100.0 ? 100 : (unsigned)adjusted);
-    }
+    depth
+      = asPercent < 1.0 ? 1 : (asPercent > 100.0 ? 100 : (unsigned)asPercent);
   }
   return depth;
 }
 
 void GOHauptwerkToOdf::BuildTremulants() {
+  /* Which pipes a tremulant acts on, and how hard, is stated per pipe rather
+   * than on the tremulant: a waveform belongs to a tremulant, and every pipe
+   * the tremulant reaches names that waveform along with its own depth. */
+  std::unordered_map<long, long> tremulantIdByWaveformId;
+  std::unordered_map<long, double> totalDepthDbByTremulantId;
+  std::unordered_map<long, unsigned> nPipesByTremulantId;
+  std::unordered_map<long, std::set<unsigned>> windchestNsByTremulantId;
   unsigned tremulantN = 0;
+
+  for (const GOHauptwerkObject &waveform :
+       r_Odf.GetObjects(WX_TREMULANT_WAVEFORM))
+    tremulantIdByWaveformId[waveform.GetLong(wxT("TremulantWaveformID"))]
+      = waveform.GetLong(wxT("TremulantID"));
+  for (const GOHauptwerkObject &waveformPipe :
+       r_Odf.GetObjects(WX_TREMULANT_WAVEFORM_PIPE)) {
+    const auto tremulantIt = tremulantIdByWaveformId.find(
+      waveformPipe.GetLong(wxT("TremulantWaveformID")));
+
+    if (tremulantIt != tremulantIdByWaveformId.end()) {
+      const long tremulantId = tremulantIt->second;
+      const auto windchestIt
+        = m_WindchestNumberByPipeId.find(waveformPipe.GetLong(WX_PIPE_ID));
+
+      totalDepthDbByTremulantId[tremulantId]
+        += wxAtof(waveformPipe.Get(wxT("AmplitudeModDepthAdjustDecibels")));
+      nPipesByTremulantId[tremulantId]++;
+      if (windchestIt != m_WindchestNumberByPipeId.end())
+        windchestNsByTremulantId[tremulantId].insert(windchestIt->second);
+    }
+  }
 
   for (const GOHauptwerkObject &tremulant : r_Odf.GetObjects(WX_TREMULANT)) {
     const wxString group = numbered(wxT("Tremulant"), ++tremulantN);
+    const long tremulantId = tremulant.GetLong(wxT("TremulantID"));
     const double freqHz = wxAtof(tremulant.Get(wxT("FrequencyWhenEngagedHz")));
     // Hauptwerk gives a frequency, GrandOrgue a period in milliseconds.
     const long periodMs = freqHz > 0.1 ? (long)(1000.0 / freqHz) : 200L;
 
-    m_TremulantNumberById[tremulant.GetLong(wxT("TremulantID"))] = tremulantN;
+    m_TremulantNumberById[tremulantId] = tremulantN;
     Set(group, WX_NAME, tremulant.Get(WX_NAME));
     Set(group, wxT("Period"), periodMs);
-    Set(group, wxT("AmpModDepth"), (long)GetTremulantDepth());
+    Set(
+      group,
+      wxT("AmpModDepth"),
+      (long)GetTremulantDepth(
+        totalDepthDbByTremulantId[tremulantId],
+        nPipesByTremulantId[tremulantId]));
     Set(
       group, wxT("StartRate"), tremulant.GetLong(wxT("StartRatePercent"), 30));
     Set(group, wxT("StopRate"), tremulant.GetLong(wxT("StopRatePercent"), 30));
@@ -1142,10 +1187,17 @@ void GOHauptwerkToOdf::BuildTremulants() {
       Set(group, wxT("DefaultToEngaged"), WX_ODF_NO);
       PlaceDrawstop(group);
     }
-    // Which windchests it acts on is not stated directly; a tremulant belongs
-    // to a division, so it is attached to every windchest the organ has.
-    for (const auto &pair : m_WindchestNumberById)
-      m_WindchestsByTremulantN[tremulantN].insert(pair.second);
+    const auto windchestNsIt = windchestNsByTremulantId.find(tremulantId);
+
+    /* Only the windchests holding pipes this tremulant reaches. Nancy's one
+     * tremulant is the Recit's and touches 976 of its 5196 pipes, so putting
+     * it on every windchest would shake the whole organ. Falling back to that
+     * only when the set names no pipes at all. */
+    if (windchestNsIt != windchestNsByTremulantId.end())
+      m_WindchestsByTremulantN[tremulantN] = windchestNsIt->second;
+    else
+      for (const auto &pair : m_WindchestNumberById)
+        m_WindchestsByTremulantN[tremulantN].insert(pair.second);
   }
   Set(WX_ORGAN, wxT("NumberOfTremulants"), (long)tremulantN);
 }
@@ -1166,14 +1218,6 @@ void GOHauptwerkToOdf::BuildEnclosures() {
 
   // EnclosurePipe says which pipes a box encloses. GrandOrgue encloses whole
   // windchests, so a box takes in every windchest any of its pipes sits on.
-  for (const GOHauptwerkObject &pipe : r_Odf.GetObjects(WX_PIPE))
-    m_WindchestNumberByPipeId[pipe.GetLong(WX_PIPE_ID)]
-      = m_WindchestNumberById.count(
-          pipe.GetLong(wxT("WindSupply_SourceWindCompartmentID")))
-      ? m_WindchestNumberById[pipe.GetLong(
-        wxT("WindSupply_SourceWindCompartmentID"))]
-      : 1;
-
   for (const GOHauptwerkObject &ep : r_Odf.GetObjects(WX_ENCLOSURE_PIPE)) {
     const auto encIt
       = m_EnclosureNumberById.find(ep.GetLong(wxT("EnclosureID")));

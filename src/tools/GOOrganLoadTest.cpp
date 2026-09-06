@@ -151,16 +151,22 @@ public:
         std::cout << "  windmodel: " << (isWindModel ? "on" : "off") << "\n";
 
         unsigned nWindLimited = 0;
+        unsigned nTremulantChests = 0;
 
         for (unsigned n = controller.GetWindchestCount(), chestI = 0;
              chestI < n;
              chestI++) {
           GOWindchest *pChest = controller.GetWindchest(chestI);
 
-          if (pChest && pChest->HasWindModel())
-            nWindLimited++;
+          if (pChest) {
+            if (pChest->HasWindModel())
+              nWindLimited++;
+            if (pChest->GetTremulantCount() > 0)
+              nTremulantChests++;
+          }
         }
         std::cout << "  wind-limited chests: " << nWindLimited << "\n";
+        std::cout << "  tremulant chests: " << nTremulantChests << "\n";
 
         unsigned nDrawnSwitches = 0;
         unsigned nDerivedSwitches = 0;
