@@ -1,0 +1,133 @@
+/*
+ * Copyright 2006 Milan Digital Audio LLC
+ * Copyright 2009-2026 GrandOrgue contributors (see AUTHORS)
+ * License GPL-2.0 or later
+ * (https://www.gnu.org/licenses/old-licenses/gpl-2.0.html).
+ */
+
+/*
+ * Loads an organ and reports what came out, without starting audio or MIDI.
+ *
+ * The application asks the user to configure a sound device when it cannot
+ * open one, which on a machine with no sound card means a dialog appears and
+ * the organ is never reached - so the GUI is not the place to check whether a
+ * definition loads. This builds the model directly, which is also what makes
+ * the check fast enough to run on every change.
+ */
+
+#include <iostream>
+
+#include <wx/app.h>
+#include <wx/filename.h>
+#include <wx/image.h>
+#include <wx/log.h>
+
+#include "config/GOConfig.h"
+#include "loader/GOProgressMonitor.h"
+#include "model/GOManual.h"
+#include "model/GORank.h"
+
+#include "GOOrgan.h"
+#include "GOOrganController.h"
+
+class GOSilentProgress : public GOProgressMonitor {
+public:
+  void Setup(long, const wxString &, const wxString &) override {}
+  void Reset(long, const wxString &) override {}
+  bool Update(unsigned, const wxString &) override { return true; }
+};
+
+class GOOrganLoadTestApp : public wxApp {
+public:
+  bool OnInit() override {
+    wxLog::SetActiveTarget(new wxLogStream(&std::cerr));
+    wxImage::AddHandler(new wxJPEGHandler);
+    wxImage::AddHandler(new wxPNGHandler);
+    wxImage::AddHandler(new wxGIFHandler);
+    wxImage::AddHandler(new wxBMPHandler);
+    return true;
+  }
+
+  int OnRun() override {
+    int result = 0;
+    wxString organPath;
+    wxString workDir;
+
+    for (int i = 1; i < argc; i++) {
+      const wxString arg = argv[i];
+
+      if (arg == wxT("--work-dir") && i + 1 < argc)
+        workDir = argv[++i];
+      else if (!arg.StartsWith(wxT("-")))
+        organPath = arg;
+    }
+
+    if (organPath.IsEmpty()) {
+      std::cerr << "Usage: GOOrganLoadTest [--work-dir DIR] <organ file>\n";
+      result = 2;
+    } else {
+      if (workDir.IsEmpty())
+        workDir = wxFileName::GetTempDir() + wxFileName::GetPathSeparator()
+          + wxT("goloadtest");
+      wxFileName::Mkdir(workDir, wxS_DIR_DEFAULT, wxPATH_MKDIR_FULL);
+
+      const std::string confPath
+        = std::string(workDir.mb_str()) + "/GrandOrgue.conf";
+      GOConfig config("loadtest", confPath);
+
+      config.Load();
+      config.OrganCachePath(workDir);
+      config.OrganSettingsPath(workDir);
+      // Reading the samples would take minutes and is not what this checks;
+      // the definition is either understood or it is not long before then.
+      config.ManageCache(false);
+
+      GOOrganController controller(config, false);
+      GOOrgan organ(organPath);
+      GOSilentProgress monitor;
+      const wxString errMsg = controller.Load(organ, wxEmptyString, true, monitor);
+
+      if (!errMsg.IsEmpty()) {
+        std::cout << "LOAD FAILED: " << errMsg.ToStdString() << "\n";
+        result = 1;
+      } else {
+        std::cout << "LOAD OK\n";
+        std::cout << "  organ    : " << controller.GetOrganName().ToStdString()
+                  << "\n";
+        std::cout << "  manuals  : " << controller.GetManualAndPedalCount()
+                  << " (first " << controller.GetFirstManualIndex() << ")\n";
+        std::cout << "  ranks    : " << controller.GetODFRankCount() << "\n";
+        std::cout << "  windchsts: " << controller.GetWindchestCount() << "\n";
+        std::cout << "  enclosurs: " << controller.GetEnclosureCount() << "\n";
+        std::cout << "  tremulnts: " << controller.GetTremulantCount() << "\n";
+
+        unsigned nStops = 0;
+        unsigned nCouplers = 0;
+
+        for (unsigned manualI = controller.GetFirstManualIndex();
+             manualI <= controller.GetManualAndPedalCount();
+             manualI++) {
+          const GOManual *pManual = controller.GetManual(manualI);
+
+          if (pManual) {
+            nStops += pManual->GetStopCount();
+            nCouplers += pManual->GetCouplerCount();
+            std::cout << "  manual " << manualI << " : "
+                      << pManual->GetName().ToStdString() << ", "
+                      << pManual->GetStopCount() << " stops, "
+                      << pManual->GetCouplerCount() << " couplers, keys "
+                      << pManual->GetFirstAccessibleKeyMIDINoteNumber() << "+"
+                      << pManual->GetNumberOfAccessibleKeys() << "\n";
+          }
+        }
+        std::cout << "  stops    : " << nStops << "\n";
+        std::cout << "  couplers : " << nCouplers << "\n";
+      }
+      controller.Clear();
+    }
+    return result;
+  }
+};
+
+DECLARE_APP(GOOrganLoadTestApp)
+IMPLEMENT_APP_CONSOLE(GOOrganLoadTestApp)

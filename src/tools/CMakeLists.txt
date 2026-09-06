@@ -36,3 +36,11 @@ if (INSTALL_DEPEND STREQUAL "ON")
 endif()
 
 add_custom_target(runperftest COMMAND GrandOrguePerfTest "${CMAKE_SOURCE_DIR}/tests" DEPENDS GrandOrguePerfTest)
+
+# Headless check that a definition loads. The application shows a device
+# configuration dialog when it cannot open audio, so a machine with no sound
+# card never reaches the organ - this builds the model directly instead.
+add_executable(GOOrganLoadTest GOOrganLoadTest.cpp)
+BUILD_EXECUTABLE(GOOrganLoadTest)
+target_include_directories(GOOrganLoadTest PUBLIC ${CMAKE_SOURCE_DIR}/src/grandorgue)
+target_link_libraries(GOOrganLoadTest golib)
