@@ -39,6 +39,10 @@ static const wxString WX_SAMPLE_ID = wxT("SampleID");
 static const wxString WX_STOP_ID = wxT("StopID");
 static const wxString WX_DIVISION_ID = wxT("DivisionID");
 
+// Hauptwerk marks the release that catches every remaining key-press length
+// with this instead of a real limit.
+static const long HW_UNLIMITED_KEY_PRESS_MS = 99999;
+
 static const wxString WX_ORGAN = wxT("Organ");
 static const wxString WX_ODF_YES = wxT("Y");
 static const wxString WX_ODF_NO = wxT("N");
@@ -338,14 +342,29 @@ void GOHauptwerkToOdf::BuildRank(
       if (harmonic > 0)
         Set(group, pipeKey + wxT("HarmonicNumber"), harmonic);
 
-      Set(group, pipeKey + wxT("ReleaseCount"), (long)releases.size());
-      for (unsigned relN = 0; relN < releases.size(); relN++) {
-        const wxString relKey
-          = wxString::Format(wxT("%sRelease%03u"), pipeKey, relN + 1);
+      // Hauptwerk picks a release by how long the key was held, so the
+      // shortest limit has to be tried first; the file does not list them in
+      // that order. The longest one carries a sentinel rather than a real
+      // limit (99999 ms), and GrandOrgue expects no MaxKeyPressTime at all
+      // for the release that catches everything else.
+      std::sort(
+        releases.begin(),
+        releases.end(),
+        [](const std::pair<wxString, long> &a,
+           const std::pair<wxString, long> &b) { return a.second < b.second; });
 
-        Set(group, relKey, releases[relN].first);
-        if (releases[relN].second >= 0 && releases.size() > 1)
-          Set(group, relKey + wxT("MaxKeyPressTime"), releases[relN].second);
+      Set(group, pipeKey + wxT("ReleaseCount"), (long)releases.size());
+      for (unsigned nReleases = releases.size(), relI = 0; relI < nReleases;
+           relI++) {
+        const wxString relKey
+          = wxString::Format(wxT("%sRelease%03u"), pipeKey, relI + 1);
+        const long maxKeyPressTime = releases[relI].second;
+
+        Set(group, relKey, releases[relI].first);
+        if (
+          nReleases > 1 && maxKeyPressTime >= 0
+          && maxKeyPressTime < HW_UNLIMITED_KEY_PRESS_MS)
+          Set(group, relKey + wxT("MaxKeyPressTime"), maxKeyPressTime);
       }
     }
   }

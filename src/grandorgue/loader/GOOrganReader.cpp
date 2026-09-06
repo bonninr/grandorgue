@@ -83,9 +83,21 @@ GOOrganReader::GOOrganReader(
       throw hwErrMsg;
 
     // The definition lives in OrganDefinitions; samples are addressed
-    // relative to the folder holding it.
-    const wxString sampleSetPath
-      = go_get_path(go_get_path(odfName.GetPath()));
+    // relative to the folder holding that. Prove it rather than assume it:
+    // if the guess is wrong every sample silently fails to resolve and the
+    // organ loads without a sound, which is far harder to diagnose than a
+    // refusal naming the folder we expected.
+    const wxString sampleSetPath = go_get_path(go_get_path(odfName.GetPath()));
+
+    if (!wxFileName::DirExists(
+          sampleSetPath + wxFileName::GetPathSeparator()
+          + wxT("OrganInstallationPackages")))
+      throw wxString::Format(
+        _("'%s' does not look like a Hauptwerk sample set: no "
+          "OrganInstallationPackages folder next to '%s'"),
+        sampleSetPath,
+        odfName.GetPath());
+
     GOHauptwerkToOdf converter(hwOdf, sampleSetPath);
 
     converter.Build();
