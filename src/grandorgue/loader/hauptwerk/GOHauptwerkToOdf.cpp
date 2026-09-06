@@ -173,8 +173,11 @@ void GOHauptwerkToOdf::FillReadFilter(
     WX_LAYER_ID,
     WX_SAMPLE_ID,
     wxT("ReleaseSelCriteria_LatestKeyReleaseTimeMs")};
-  outFilter[WX_SAMPLE]
-    = {WX_SAMPLE_ID, wxT("InstallationPackageID"), wxT("SampleFilename")};
+  outFilter[WX_SAMPLE] = {
+    WX_SAMPLE_ID,
+    wxT("InstallationPackageID"),
+    wxT("SampleFilename"),
+    wxT("Pitch_ExactSamplePitch")};
 }
 
 GOHauptwerkToOdf::GOHauptwerkToOdf(
@@ -1169,6 +1172,9 @@ void GOHauptwerkToOdf::BuildRank(
     // first one that states a value is the one that counts.
     double gainDb = 0.0;
     double detuneCents = 0.0;
+    // The pitch the attack was recorded at, which is not the pitch the pipe
+    // sounds wherever a rank is filled out by transposing another recording.
+    double attackHz = 0.0;
     bool hasVoicing = false;
 
     if (layersIt != m_LayersByPipeId.end())
@@ -1191,10 +1197,12 @@ void GOHauptwerkToOdf::BuildRank(
             const GOHauptwerkObject *pSample = r_Odf.FindById(
               WX_SAMPLE, WX_SAMPLE_ID, pAttack->GetLong(WX_SAMPLE_ID));
 
-            if (pSample && attackPath.IsEmpty())
+            if (pSample && attackPath.IsEmpty()) {
               attackPath = ResolvePackagePath(
                 pSample->Get(wxT("SampleFilename")),
                 pSample->GetLong(wxT("InstallationPackageID")));
+              attackHz = wxAtof(pSample->Get(wxT("Pitch_ExactSamplePitch")));
+            }
           }
 
         const auto releasesIt = m_ReleasesByLayerId.find(layerId);
@@ -1225,11 +1233,10 @@ void GOHauptwerkToOdf::BuildRank(
         pipe.GetLong(wxT("NormalMIDINoteNumber"))));
       Set(group, pipeKey, wxT("DUMMY"));
     } else {
-      Set(group, pipeKey, attackPath);
-
       const long harmonic
         = pipe.GetLong(wxT("Pitch_Tempered_RankBasePitch64ftHarmonicNum"), 0);
 
+      Set(group, pipeKey, attackPath);
       if (harmonic > 0)
         Set(group, pipeKey + wxT("HarmonicNumber"), harmonic);
 
@@ -1244,38 +1251,50 @@ void GOHauptwerkToOdf::BuildRank(
             wxString::Format(wxT("%.8f"), flow));
       }
 
-      if (m_IsVoicingEnabled) {
-        // The pitch the pipe was actually recorded at. Without it GrandOrgue
-        // infers the pitch from the file and the harmonic number, which is a
-        // guess; Hauptwerk states it, and stating it back is what keeps a
-        // converted rank in tune with itself.
-        const double recordedHz
-          = wxAtof(pipe.Get(wxT("Pitch_OriginalOrgan_PitchHz")));
+      /* Tuning, which is not voicing and so is not switchable: getting it
+       * wrong is not a matter of taste. Two different pitches are stated and
+       * they have to be kept apart. The sample says what was recorded; the
+       * pipe says what it sounded like in the organ it came from, and where a
+       * rank was filled out by transposing a lower recording - the top of
+       * Nancy's Trompette is its own octave below - the two are an octave
+       * apart.
+       *
+       * All of it is carried in PitchTuning rather than in the key number.
+       * Cents are continuous where a key number is not, so a set that states
+       * a pipe slightly out of tune keeps that, and anything a voicer adds
+       * later simply adds to the same number. The key number is left as a
+       * fixed reference - the equally tempered pitch of the key, shifted by
+       * the rank's harmonic number - which is the pitch GrandOrgue would play
+       * the pipe at with no tuning at all. */
+      const double soundedHz
+        = wxAtof(pipe.Get(wxT("Pitch_OriginalOrgan_PitchHz")));
+      const long noteN = firstMidiNote + (long)pipeI;
+      double tuningCents = m_IsVoicingEnabled ? detuneCents : 0.0;
 
-        if (recordedHz > 8.0) {
-          const double midiExact = 69.0 + 12.0 * std::log2(recordedHz / 440.0);
-          const double midiKey = std::floor(midiExact);
-          const double fraction = (midiExact - midiKey) * 100.0;
+      if (harmonic > 0 && noteN >= 0 && noteN <= 127) {
+        const double referenceHz
+          = 440.0 * std::pow(2.0, (noteN - 69) / 12.0) * (double)harmonic / 8.0;
+        const double midiExact = 69.0 + 12.0 * std::log2(referenceHz / 440.0);
+        const double midiKey = std::floor(midiExact);
 
-          if (midiKey >= 0 && midiKey <= 127) {
-            Set(group, pipeKey + wxT("MIDIKeyNumber"), (long)midiKey);
-            Set(
-              group,
-              pipeKey + wxT("MIDIPitchFraction"),
-              wxString::Format(wxT("%.6f"), fraction));
-          }
+        if (midiKey >= 0 && midiKey <= 127) {
+          Set(group, pipeKey + wxT("MIDIKeyNumber"), (long)midiKey);
+          Set(
+            group,
+            pipeKey + wxT("MIDIPitchFraction"),
+            wxString::Format(wxT("%.6f"), (midiExact - midiKey) * 100.0));
         }
-        if (gainDb != 0.0)
-          Set(
-            group,
-            pipeKey + wxT("Gain"),
-            wxString::Format(wxT("%.4f"), gainDb));
-        if (detuneCents != 0.0)
-          Set(
-            group,
-            pipeKey + wxT("PitchTuning"),
-            wxString::Format(wxT("%.4f"), detuneCents));
       }
+      if (attackHz > 8.0 && soundedHz > 8.0)
+        tuningCents += 1200.0 * std::log2(soundedHz / attackHz);
+      if (m_IsVoicingEnabled && gainDb != 0.0)
+        Set(
+          group, pipeKey + wxT("Gain"), wxString::Format(wxT("%.4f"), gainDb));
+      if (tuningCents != 0.0)
+        Set(
+          group,
+          pipeKey + wxT("PitchTuning"),
+          wxString::Format(wxT("%.4f"), tuningCents));
 
       // Hauptwerk picks a release by how long the key was held, so the
       // shortest limit has to be tried first; the file does not list them in
